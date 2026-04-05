@@ -3,11 +3,8 @@ import { upsertEnergieData } from '@/lib/db';
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
-function berekenPrijzen(spotprijs) {
-  const inkoopprijs  = (spotprijs + 0.03 + 0.13) * 1.21; // spot + opslag + EB × BTW
-  const verkoopprijs = spotprijs * 1.21;                  // alleen spot × BTW
-  return { inkoopprijs, verkoopprijs };
-}
+function inkoopprijs(spot)  { return (spot + 0.03 + 0.13) * 1.21; }
+function verkoopprijs(spot) { return spot * 1.21; }
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -23,53 +20,61 @@ export async function GET(request) {
     const start = Math.floor(new Date(datumStr + 'T00:00:00').getTime() / 1000);
     const end   = Math.floor(new Date(datumStr + 'T23:59:59').getTime() / 1000);
 
-    // 2. Victron statistics API
+    // 2. Victron kwartierdata
     const victronRes = await fetch(
-      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=days&start=${start}&end=${end}`,
+      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=15mins&start=${start}&end=${end}`,
       { headers: { 'x-authorization': `Token ${TOKEN}` } }
     );
     const victronData = await victronRes.json();
-    const totals = victronData?.totals || {};
+    const records = victronData?.records || {};
 
-    const Bg = parseFloat(totals.Bg || 0); // Batterij naar net
-    const Bc = parseFloat(totals.Bc || 0); // Batterij naar verbruikers
-    const Pc = parseFloat(totals.Pc || 0); // Zon naar verbruikers
-    const Pb = parseFloat(totals.Pb || 0); // Zon naar batterij
-    const Pg = parseFloat(totals.Pg || 0); // Zon naar net
-    const Gb = parseFloat(totals.Gb || 0); // Net naar batterij
-    const Gc = parseFloat(totals.Gc || 0); // Net naar verbruikers
-    const totalPV = Pg + Pc + Pb;
-
-    // 3. Dynamische prijzen per kwartier ophalen
+    // 3. Energieprijzen per uur
     const prijsRes = await fetch(
       `https://api.energyzero.nl/v1/energyprices?fromDate=${datumStr}T00:00:00.000Z&tillDate=${datumStr}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
     );
     const prijsData = await prijsRes.json();
     const prijzen   = prijsData?.Prices || [];
-    const gemSpot   = prijzen.length > 0
-      ? prijzen.reduce((s, p) => s + p.price, 0) / prijzen.length
-      : 0.10;
 
-    const { inkoopprijs, verkoopprijs } = berekenPrijzen(gemSpot);
+    // Maak een map van uur → spotprijs
+    const prijsPerUur = {};
+    for (const p of prijzen) {
+      const uur = new Date(p.readingDate).getTime();
+      prijsPerUur[uur] = p.price;
+    }
 
-    // 4. Winstberekening (zoals Victron app)
-    // + Batterij naar net         × verkoopprijs (verkoop bij hoge prijs)
-    // + Batterij naar verbruikers × inkoopprijs  (vermeden inkoop)
-    // + Zon naar verbruikers      × inkoopprijs  (vermeden inkoop)
-    // - Net naar batterij         × inkoopprijs  (laadkosten van net)
-    // - Net naar verbruikers      × inkoopprijs  (netkosten)
-    const winstBgNet   = Bg * verkoopprijs;
-    const winstBcThuis = Bc * inkoopprijs;
-    const winstPcThuis = Pc * inkoopprijs;
-    const kostenGbNet  = Gb * verkoopprijs;
-    const kostenGcNet  = Gc * verkoopprijs;
+    // Zoek de spotprijs voor een gegeven timestamp
+    function vindPrijs(tsMs) {
+      const d = new Date(tsMs);
+      d.setMinutes(0, 0, 0);
+      const uurTs = d.getTime();
+      return prijsPerUur[uurTs] ?? 0.10; // fallback 0.10
+    }
+
+    // 4. Bereken winst per datapunt
+    function berekenSom(veld, prijsFn) {
+      return (records[veld] || []).reduce((som, [ts, kwh]) => {
+        const spot = vindPrijs(ts);
+        return som + kwh * prijsFn(spot);
+      }, 0);
+    }
+
+    const winstBgNet   = berekenSom('Bg', verkoopprijs); // batterij → net
+    const winstBcThuis = berekenSom('Bc', inkoopprijs);  // batterij → verbruikers
+    const winstPcThuis = berekenSom('Pc', inkoopprijs);  // zon → verbruikers
+    const kostenGbNet  = berekenSom('Gb', inkoopprijs);  // net → batterij (laadkosten)
+    const kostenGcNet  = berekenSom('Gc', inkoopprijs);  // net → verbruikers (netkosten)
 
     const totaalWinst = winstBgNet + winstBcThuis + winstPcThuis - kostenGbNet - kostenGcNet;
 
-    // 5. Opslaan
+    // 5. Totalen voor opslag
+    const som = (veld) => (records[veld] || []).reduce((s, [, v]) => s + v, 0);
+    const Pg = som('Pg'), Pc = som('Pc'), Pb = som('Pb');
+    const Bg = som('Bg'), Bc = som('Bc');
+    const Gb = som('Gb'), Gc = som('Gc');
+
     await upsertEnergieData({
       datum:           datumStr,
-      solar_yield_kwh: totalPV,
+      solar_yield_kwh: Pg + Pc + Pb,
       verbruik_kwh:    Pc + Bc + Gc,
       net_import_kwh:  Gb + Gc,
       net_export_kwh:  Pg + Bg,
@@ -77,11 +82,11 @@ export async function GET(request) {
     });
 
     return Response.json({
-      success: true,
-      datum: datumStr,
-      Bg, Bc, Pc, Pb, Pg, Gb, Gc,
-      inkoopprijs:  inkoopprijs.toFixed(4),
-      verkoopprijs: verkoopprijs.toFixed(4),
+      success:       true,
+      datum:         datumStr,
+      Bg: Bg.toFixed(2), Bc: Bc.toFixed(2),
+      Pc: Pc.toFixed(2), Pg: Pg.toFixed(2),
+      Gb: Gb.toFixed(2), Gc: Gc.toFixed(2),
       winstBgNet:   winstBgNet.toFixed(2),
       winstBcThuis: winstBcThuis.toFixed(2),
       winstPcThuis: winstPcThuis.toFixed(2),
