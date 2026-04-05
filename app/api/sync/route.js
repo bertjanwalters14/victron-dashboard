@@ -7,6 +7,11 @@ function berekenPrijs(spotprijs) {
   return (spotprijs + 0.03 + 0.13) * 1.21;
 }
 
+function vindWaarde(records, code) {
+  const rec = records.find(r => r.code === code);
+  return rec ? parseFloat(rec.rawValue || 0) : 0;
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get('secret') !== process.env.CRON_SECRET) {
@@ -20,8 +25,19 @@ export async function GET(request) {
       { headers: { 'x-authorization': `Token ${TOKEN}` } }
     );
     const victronData = await victronRes.json();
+    const records = victronData?.records || [];
 
-    // 2. Dynamische energieprijs van gisteren ophalen
+    // 2. Relevante velden uitlezen
+    const pvNaarNet        = vindWaarde(records, 'Pg');   // PV to grid (kWh)
+    const pvNaarVerbruiker = vindWaarde(records, 'Pc');   // PV to consumers (kWh)
+    const pvNaarBatterij   = vindWaarde(records, 'Pb');   // PV to battery (kWh)
+    const batNaarNet       = vindWaarde(records, 'Bg');   // Battery to grid (kWh)
+    const batNaarVerbruiker= vindWaarde(records, 'Bc');   // Battery to consumers (kWh)
+    const netNaarBatterij  = vindWaarde(records, 'Gb');   // Grid to battery (kWh)
+    const netNaarVerbruiker= vindWaarde(records, 'Gc');   // Grid to consumers (kWh)
+    const totalPV          = pvNaarNet + pvNaarVerbruiker + pvNaarBatterij;
+
+    // 3. Dynamische energieprijs ophalen
     const gisteren = new Date();
     gisteren.setDate(gisteren.getDate() - 1);
     const datumStr = gisteren.toISOString().split('T')[0];
@@ -31,45 +47,40 @@ export async function GET(request) {
     );
     const prijsData = await prijsRes.json();
 
-    const prijzen   = prijsData?.Prices || [];
-    const gemSpot   = prijzen.length > 0
+    const prijzen  = prijsData?.Prices || [];
+    const gemSpot  = prijzen.length > 0
       ? prijzen.reduce((s, p) => s + p.price, 0) / prijzen.length
       : 0.10;
     const eindprijs = berekenPrijs(gemSpot);
 
-    // 3. Victron velden verwerken
-    const records    = victronData?.records || {};
-    const solar      = parseFloat(records.total_solar_yield  || 0);
-    const verbruik   = parseFloat(records.total_consumption  || 0);
-    const netFrom    = parseFloat(records.grid_history_from  || 0);
-    const netTo      = parseFloat(records.grid_history_to    || 0);
+    // 4. Winstberekening
+    // Batterij naar net = verkoop aan net
+    // Batterij naar verbruikers = vermeden inkoop
+    const winstBatNaarNet        = batNaarNet * eindprijs;
+    const winstBatNaarVerbruiker = batNaarVerbruiker * eindprijs;
+    const totaalWinst = winstBatNaarNet + winstBatNaarVerbruiker;
 
-    const zelfverbruikZon = Math.max(0, solar - netTo);
-    const batterijBijdrage = Math.max(0, verbruik - solar - netFrom);
-    const totaalWinst =
-      zelfverbruikZon   * eindprijs +
-      netTo             * eindprijs * 0.7 +
-      batterijBijdrage  * eindprijs;
-
-    // 4. Opslaan in Neon
+    // 5. Opslaan in database
     await upsertEnergieData({
       datum:           datumStr,
-      solar_yield_kwh: solar,
-      verbruik_kwh:    verbruik,
-      net_import_kwh:  netFrom,
-      net_export_kwh:  netTo,
+      solar_yield_kwh: totalPV,
+      verbruik_kwh:    pvNaarVerbruiker + batNaarVerbruiker + netNaarVerbruiker,
+      net_import_kwh:  netNaarBatterij + netNaarVerbruiker,
+      net_export_kwh:  pvNaarNet + batNaarNet,
       winst_euro:      totaalWinst,
     });
 
     return Response.json({
-      success: true,
-      datum:      datumStr,
-      solar,
-      verbruik,
-      netFrom,
-      netTo,
-      eindprijs:  eindprijs.toFixed(4),
-      winst:      totaalWinst.toFixed(2),
+      success:          true,
+      datum:            datumStr,
+      pvNaarNet,
+      pvNaarVerbruiker,
+      pvNaarBatterij,
+      batNaarNet,
+      batNaarVerbruiker,
+      netNaarBatterij,
+      eindprijs:        eindprijs.toFixed(4),
+      winst:            totaalWinst.toFixed(2),
     });
 
   } catch (err) {
