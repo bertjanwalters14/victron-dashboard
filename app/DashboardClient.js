@@ -68,7 +68,7 @@ export default function DashboardClient({ data }) {
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={cumulatief(data)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="datum" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={d => d.slice(5)} />
+                  <XAxis dataKey="datum" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={d => String(d).slice(5)} />
                   <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} />
                   <Tooltip
                     formatter={v => [`€${v.toFixed(2)}`, 'Winst']}
