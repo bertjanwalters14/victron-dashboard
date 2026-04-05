@@ -7,11 +7,6 @@ function berekenPrijs(spotprijs) {
   return (spotprijs + 0.03 + 0.13) * 1.21;
 }
 
-function vindWaarde(records, code) {
-  const rec = records.find(r => r.code === code);
-  return rec ? parseFloat(rec.rawValue || 0) : 0;
-}
-
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get('secret') !== process.env.CRON_SECRET) {
@@ -19,48 +14,50 @@ export async function GET(request) {
   }
 
   try {
-    // 1. Victron data ophalen
-    const victronRes = await fetch(
-      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/diagnostics`,
-      { headers: { 'x-authorization': `Token ${TOKEN}` } }
-    );
-    const victronData = await victronRes.json();
-    const records = victronData?.records || [];
-
-    // 2. Relevante velden uitlezen
-    const pvNaarNet        = vindWaarde(records, 'Pg');   // PV to grid (kWh)
-    const pvNaarVerbruiker = vindWaarde(records, 'Pc');   // PV to consumers (kWh)
-    const pvNaarBatterij   = vindWaarde(records, 'Pb');   // PV to battery (kWh)
-    const batNaarNet       = vindWaarde(records, 'Bg');   // Battery to grid (kWh)
-    const batNaarVerbruiker= vindWaarde(records, 'Bc');   // Battery to consumers (kWh)
-    const netNaarBatterij  = vindWaarde(records, 'Gb');   // Grid to battery (kWh)
-    const netNaarVerbruiker= vindWaarde(records, 'Gc');   // Grid to consumers (kWh)
-    const totalPV          = pvNaarNet + pvNaarVerbruiker + pvNaarBatterij;
-
-    // 3. Dynamische energieprijs ophalen
+    // 1. Gisteren als timestamp
     const gisteren = new Date();
     gisteren.setDate(gisteren.getDate() - 1);
     const datumStr = gisteren.toISOString().split('T')[0];
+    const start = Math.floor(new Date(datumStr + 'T00:00:00').getTime() / 1000);
+    const end   = Math.floor(new Date(datumStr + 'T23:59:59').getTime() / 1000);
 
+    // 2. Victron statistics API (dagdata)
+    const victronRes = await fetch(
+      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=days&start=${start}&end=${end}`,
+      { headers: { 'x-authorization': `Token ${TOKEN}` } }
+    );
+    const victronData = await victronRes.json();
+    const totals = victronData?.totals || {};
+
+    // 3. Velden uitlezen
+    const pvNaarNet         = parseFloat(totals.Pg || 0);  // PV to grid
+    const pvNaarVerbruiker  = parseFloat(totals.Pc || 0);  // PV to consumers
+    const pvNaarBatterij    = parseFloat(totals.Pb || 0);  // PV to battery
+    const batNaarNet        = parseFloat(totals.Bg || 0);  // Battery to grid
+    const batNaarVerbruiker = parseFloat(totals.Bc || 0);  // Battery to consumers
+    const netNaarBatterij   = parseFloat(totals.Gb || 0);  // Grid to battery
+    const netNaarVerbruiker = parseFloat(totals.Gc || 0);  // Grid to consumers
+    const totalPV           = pvNaarNet + pvNaarVerbruiker + pvNaarBatterij;
+
+    // 4. Dynamische energieprijs ophalen
     const prijsRes = await fetch(
       `https://api.energyzero.nl/v1/energyprices?fromDate=${datumStr}T00:00:00.000Z&tillDate=${datumStr}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
     );
     const prijsData = await prijsRes.json();
-
-    const prijzen  = prijsData?.Prices || [];
-    const gemSpot  = prijzen.length > 0
+    const prijzen   = prijsData?.Prices || [];
+    const gemSpot   = prijzen.length > 0
       ? prijzen.reduce((s, p) => s + p.price, 0) / prijzen.length
       : 0.10;
     const eindprijs = berekenPrijs(gemSpot);
 
-    // 4. Winstberekening
+    // 5. Winstberekening
     // Batterij naar net = verkoop aan net
     // Batterij naar verbruikers = vermeden inkoop
     const winstBatNaarNet        = batNaarNet * eindprijs;
     const winstBatNaarVerbruiker = batNaarVerbruiker * eindprijs;
-    const totaalWinst = winstBatNaarNet + winstBatNaarVerbruiker;
+    const totaalWinst            = winstBatNaarNet + winstBatNaarVerbruiker;
 
-    // 5. Opslaan in database
+    // 6. Opslaan in database
     await upsertEnergieData({
       datum:           datumStr,
       solar_yield_kwh: totalPV,
