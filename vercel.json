@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/sync?secret=JOUW_CRON_SECRET",
-      "schedule": "0 6 * * *"
+      "schedule": "1 0 * * *"
     }
   ]
 }
