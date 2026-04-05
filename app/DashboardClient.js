@@ -1,8 +1,16 @@
 'use client';
+import { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const BATTERIJ_KOSTEN   = 13500;
 const INSTALLATIE_DATUM = new Date('2026-04-03');
+
+const INFO = {
+  winst:    'Het totale bedrag dat de batterij heeft opgeleverd sinds installatie. Dit groeit elke dag automatisch.',
+  roi:      'Hoeveel procent van je €13.500 investering je al hebt terugverdiend. Stijgt naarmate de batterij meer oplevert.',
+  dagwinst: 'Het gemiddelde bedrag dat de batterij per dag oplevert. Wordt nauwkeuriger naarmate er meer data beschikbaar is.',
+  terugverdien: 'De geschatte datum waarop je je volledige investering van €13.500 hebt terugverdiend. Gebaseerd op de huidige gemiddelde dagwinst.',
+};
 
 export default function DashboardClient({ data }) {
   const totaalWinst   = data.reduce((s, d) => s + parseFloat(d.winst_euro || 0), 0);
@@ -24,11 +32,11 @@ export default function DashboardClient({ data }) {
           <p className="text-gray-400 mt-1">Installatie: 3 april 2026 · Investering: €13.500</p>
         </div>
 
-        {/* KPI Cards - 2 kolommen op mobiel, 4 op desktop */}
+        {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
-          <Card label="Totale winst"    value={`€${totaalWinst.toFixed(2)}`}  color="text-green-400" sub="sinds installatie" />
-          <Card label="ROI"             value={`${roiPct.toFixed(2)}%`}        color="text-blue-400"  sub="van €13.500" />
-          <Card label="Gem. dagwinst"   value={`€${gemDagwinst.toFixed(2)}`}   color="text-yellow-400" sub="per dag gemiddeld" />
+          <Card label="Totale winst"    value={`€${totaalWinst.toFixed(2)}`}  color="text-green-400"  sub="sinds installatie"      info={INFO.winst} />
+          <Card label="ROI"             value={`${roiPct.toFixed(2)}%`}        color="text-blue-400"   sub="van €13.500"             info={INFO.roi} />
+          <Card label="Gem. dagwinst"   value={`€${gemDagwinst.toFixed(2)}`}   color="text-yellow-400" sub="per dag gemiddeld"       info={INFO.dagwinst} />
           <Card
             label="Terugverdiend op"
             value={terugverdienDatum
@@ -36,6 +44,7 @@ export default function DashboardClient({ data }) {
               : '—'}
             color="text-purple-400"
             sub={dagenTerugverdiend ? `over ${Math.round(dagenTerugverdiend)} dagen` : 'nog berekening nodig'}
+            info={INFO.terugverdien}
           />
         </div>
 
@@ -58,10 +67,8 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        {/* Grafiek + Tabel - naast elkaar op desktop */}
+        {/* Grafiek + Tabel */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-
-          {/* Grafiek */}
           <div className="bg-gray-800 rounded-xl p-5">
             <h2 className="font-semibold text-gray-200 mb-4">Cumulatieve winst</h2>
             {data.length > 0 ? (
@@ -85,7 +92,6 @@ export default function DashboardClient({ data }) {
             )}
           </div>
 
-          {/* Recente dagen */}
           <div className="bg-gray-800 rounded-xl p-5">
             <h2 className="font-semibold text-gray-200 mb-4">Recente dagen</h2>
             {data.length > 0 ? (
@@ -101,7 +107,7 @@ export default function DashboardClient({ data }) {
                   </thead>
                   <tbody>
                     {[...data].reverse().slice(0, 8).map(d => (
-                      <tr key={d.datum} className="border-b border-gray-700 hover:bg-gray-750">
+                      <tr key={d.datum} className="border-b border-gray-700">
                         <td className="py-2 text-gray-300">
                           {new Date(d.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                         </td>
@@ -121,22 +127,38 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-gray-600 text-xs">
-          Data wordt elke dag om 06:00 automatisch bijgewerkt · Victron Site {process.env.NEXT_PUBLIC_VICTRON_SITE_ID || '934962'}
+          Data wordt elke dag om 06:00 automatisch bijgewerkt
         </p>
-
       </div>
     </main>
   );
 }
 
-function Card({ label, value, color, sub }) {
+function Card({ label, value, color, sub, info }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="bg-gray-800 rounded-xl p-4 md:p-5">
-      <p className="text-gray-400 text-xs mb-1">{label}</p>
+    <div className="bg-gray-800 rounded-xl p-4 md:p-5 relative">
+      <div className="flex justify-between items-start mb-1">
+        <p className="text-gray-400 text-xs">{label}</p>
+        <button
+          onClick={() => setOpen(!open)}
+          className="text-gray-500 hover:text-gray-300 transition-colors ml-1 flex-shrink-0"
+          aria-label="Info"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
+          </svg>
+        </button>
+      </div>
       <p className={`text-xl md:text-2xl font-bold ${color}`}>{value}</p>
       {sub && <p className="text-gray-500 text-xs mt-1">{sub}</p>}
+      {open && (
+        <div className="absolute z-10 top-full left-0 mt-2 w-56 bg-gray-700 text-gray-200 text-xs rounded-lg p-3 shadow-lg">
+          {info}
+          <button onClick={() => setOpen(false)} className="mt-2 text-gray-400 hover:text-white block">Sluiten ✕</button>
+        </div>
+      )}
     </div>
   );
 }
