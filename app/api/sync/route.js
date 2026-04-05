@@ -61,8 +61,8 @@ export async function GET(request) {
     const winstBgNet   = Bg * verkoopprijs;
     const winstBcThuis = Bc * inkoopprijs;
     const winstPcThuis = Pc * inkoopprijs;
-    const kostenGbNet  = Gb * inkoopprijs;
-    const kostenGcNet  = Gc * inkoopprijs;
+    const kostenGbNet  = Gb * verkoopprijs;
+    const kostenGcNet  = Gc * verkoopprijs;
 
     const totaalWinst = winstBgNet + winstBcThuis + winstPcThuis - kostenGbNet - kostenGcNet;
 
