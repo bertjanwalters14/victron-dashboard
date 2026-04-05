@@ -42,31 +42,24 @@ export async function GET(request) {
       prijsPerUur[uur] = p.price;
     }
 
-    // Zoek de spotprijs voor een gegeven timestamp
     function vindPrijs(tsMs) {
       const d = new Date(tsMs);
       d.setMinutes(0, 0, 0);
-      const uurTs = d.getTime();
-      return prijsPerUur[uurTs] ?? 0.10; // fallback 0.10
+      return prijsPerUur[d.getTime()] ?? 0.10;
     }
 
-    // 4. Bereken winst per datapunt
     function berekenSom(veld, prijsFn) {
       return (records[veld] || []).reduce((som, [ts, kwh]) => {
-        const spot = vindPrijs(ts);
-        return som + kwh * prijsFn(spot);
+        return som + kwh * prijsFn(vindPrijs(ts));
       }, 0);
     }
 
-    const winstBgNet   = berekenSom('Bg', verkoopprijs); // batterij → net
-    const winstBcThuis = berekenSom('Bc', inkoopprijs);  // batterij → verbruikers
-    const winstPcThuis = berekenSom('Pc', inkoopprijs);  // zon → verbruikers
-    const kostenGbNet  = berekenSom('Gb', inkoopprijs);  // net → batterij (laadkosten)
-    const kostenGcNet  = berekenSom('Gc', inkoopprijs);  // net → verbruikers (netkosten)
+    // Winst = batterij naar net + batterij naar verbruikers
+    const winstBgNet   = berekenSom('Bg', verkoopprijs);
+    const winstBcThuis = berekenSom('Bc', inkoopprijs);
+    const totaalWinst  = winstBgNet + winstBcThuis;
 
-    const totaalWinst = winstBgNet + winstBcThuis + winstPcThuis - kostenGbNet - kostenGcNet;
-
-    // 5. Totalen voor opslag
+    // Totalen voor opslag
     const som = (veld) => (records[veld] || []).reduce((s, [, v]) => s + v, 0);
     const Pg = som('Pg'), Pc = som('Pc'), Pb = som('Pb');
     const Bg = som('Bg'), Bc = som('Bc');
@@ -89,9 +82,6 @@ export async function GET(request) {
       Gb: Gb.toFixed(2), Gc: Gc.toFixed(2),
       winstBgNet:   winstBgNet.toFixed(2),
       winstBcThuis: winstBcThuis.toFixed(2),
-      winstPcThuis: winstPcThuis.toFixed(2),
-      kostenGbNet:  kostenGbNet.toFixed(2),
-      kostenGcNet:  kostenGcNet.toFixed(2),
       winst:        totaalWinst.toFixed(2),
     });
 
