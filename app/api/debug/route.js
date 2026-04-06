@@ -8,12 +8,21 @@ export async function GET(request) {
   const TOKEN   = process.env.VICTRON_API_TOKEN;
 
   try {
-    const res = await fetch(
-      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/settings`,
-      { headers: { 'x-authorization': `Token ${TOKEN}` } }
-    );
-    const data = await res.json();
-    return Response.json(data);
+    // Probeer verschillende endpoints voor prijsinstellingen
+    const [siteRes, dessRes] = await Promise.all([
+      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}`, 
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
+      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/dynamic-ess-settings`,
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
+    ]);
+
+    const siteData = await siteRes.json();
+    const dessData = await dessRes.json();
+
+    return Response.json({
+      site: siteData,
+      dess: dessData,
+    });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
