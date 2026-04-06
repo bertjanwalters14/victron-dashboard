@@ -4,31 +4,27 @@ export async function GET(request) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const SITE_ID = process.env.VICTRON_SITE_ID;
+  const TOKEN   = process.env.VICTRON_API_TOKEN;
+
+  const datum = searchParams.get('datum') || '2026-04-05';
+  const start = Math.floor(new Date(datum + 'T00:00:00').getTime() / 1000);
+  const end   = Math.floor(new Date(datum + 'T23:59:59').getTime() / 1000);
+
   try {
-    // Prijzen 4 april ophalen
-    const prijsRes = await fetch(
-      `https://api.energyzero.nl/v1/energyprices?fromDate=2026-04-04T00:00:00.000Z&tillDate=2026-04-04T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
-    );
-    const prijsData = await prijsRes.json();
-    const prijzen = prijsData?.Prices || [];
+    const [dagRes, uurRes] = await Promise.all([
+      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=days&start=${start}&end=${end}`,
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
+      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
+    ]);
 
-    // Toon alle uurprijzen met all-in berekening
-    const overzicht = prijzen.map(p => ({
-      uur: new Date(p.readingDate).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
-      spot:    p.price.toFixed(4),
-      allIn:   ((p.price + 0.03 + 0.13) * 1.21).toFixed(4),
-    }));
-
-    // Bereken gemiddelde van 16:00-19:00
-    const relevantUren = overzicht.filter(p => 
-      ['16:00', '17:00', '18:00'].includes(p.uur)
-    );
+    const dagData = await dagRes.json();
+    const uurData = await uurRes.json();
 
     return Response.json({
-      allePrijzen: overzicht,
-      relevantUren,
-      gemSpot1619: (relevantUren.reduce((s, p) => s + parseFloat(p.spot), 0) / relevantUren.length).toFixed(4),
-      gemAllin1619: (relevantUren.reduce((s, p) => s + parseFloat(p.allIn), 0) / relevantUren.length).toFixed(4),
+      dag_totals: dagData?.totals,
+      uur_totals: uurData?.totals,
     });
 
   } catch (err) {
