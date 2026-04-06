@@ -4,7 +4,7 @@ const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
 function allinPrijs(spot) {
-  return (spot + 0.03 + 0.13) * 1.21;
+  return spot * 1.21;
 }
 
 export async function GET(request) {
