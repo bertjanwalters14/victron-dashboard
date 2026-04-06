@@ -27,9 +27,12 @@ export default function DashboardClient({ data }) {
       <div className="max-w-5xl mx-auto px-4 py-6 md:py-10">
 
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
-          <p className="text-gray-400 mt-1">Installatie: 3 april 2026 · Investering: €13.500</p>
+        <div className="flex justify-between items-start mb-8">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
+            <p className="text-gray-400 mt-1">Installatie: 3 april 2026 · Investering: €13.500</p>
+          </div>
+          <RefreshButton />
         </div>
 
         {/* KPI Cards */}
@@ -160,6 +163,44 @@ function Card({ label, value, color, sub, info }) {
         </div>
       )}
     </div>
+  );
+}
+
+function RefreshButton() {
+  const [status, setStatus] = useState('idle'); // idle | loading | done | error
+
+  async function handleRefresh() {
+    setStatus('loading');
+    try {
+      const res = await fetch('/api/sync?secret=Nummer14!');
+      const data = await res.json();
+      if (data.success) {
+        setStatus('done');
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 3000);
+      }
+    } catch {
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleRefresh}
+      disabled={status === 'loading'}
+      className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-sm text-gray-300 px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${status === 'loading' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      {status === 'idle'    && 'Ververs'}
+      {status === 'loading' && 'Bezig...'}
+      {status === 'done'    && '✓ Klaar!'}
+      {status === 'error'   && '✗ Fout'}
+    </button>
   );
 }
 
