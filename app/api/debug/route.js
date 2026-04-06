@@ -79,6 +79,8 @@ export async function GET(request) {
         Bg: BgKwh.toFixed(2),
         Bc: BcKwh.toFixed(2),
         Pc: totaalKwh('Pc').toFixed(2),
+        Pg: totaalKwh('Pg').toFixed(2),
+        Pb: totaalKwh('Pb').toFixed(2),
         Gc: totaalKwh('Gc').toFixed(2),
         Gb: GbKwh.toFixed(2),
       },
