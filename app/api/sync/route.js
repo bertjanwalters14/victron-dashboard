@@ -81,7 +81,7 @@ export async function GET(request) {
     const BcKwh = totaalKwh('Bc');
     const accuKosten = (GbKwh + BgKwh + BcKwh) * 0.01;
 
-    const totaalWinst = winstBg + winstBc + winstPc - kostenGc - kostenGb - accuKosten;
+    const totaalWinst = winstBg - accuKosten;
 
     // 5. Totalen voor opslag
     const PcKwh = totaalKwh('Pc');
@@ -91,7 +91,7 @@ export async function GET(request) {
 
     await upsertEnergieData({
       datum:           datumStr,
-      solar_yield_kwh: BgKwh + PcKwh + PbKwh,
+      solar_yield_kwh: PgKwh + PcKwh + PbKwh,
       verbruik_kwh:    BcKwh + PcKwh + GcKwh,
       net_import_kwh:  GbKwh + GcKwh,
       net_export_kwh:  BgKwh + PgKwh,
