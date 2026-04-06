@@ -104,7 +104,7 @@ export default function DashboardClient({ data }) {
                     <tr className="text-gray-500 text-xs border-b border-gray-700">
                       <th className="text-left py-2">Datum</th>
                       <th className="text-right py-2">Zon (kWh)</th>
-                      <th className="text-right py-2">Net export</th>
+                      <th className="text-right py-2">Naar net</th>
                       <th className="text-right py-2">Winst</th>
                     </tr>
                   </thead>
