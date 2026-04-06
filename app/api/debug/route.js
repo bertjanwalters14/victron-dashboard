@@ -4,27 +4,32 @@ export async function GET(request) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const SITE_ID = process.env.VICTRON_SITE_ID;
-  const TOKEN   = process.env.VICTRON_API_TOKEN;
-
-  const datum = searchParams.get('datum') || '2026-04-05';
-  const start = Math.floor(new Date(datum + 'T00:00:00').getTime() / 1000);
-  const end   = Math.floor(new Date(datum + 'T23:59:59').getTime() / 1000);
+  const datum = searchParams.get('datum') || new Date().toISOString().split('T')[0];
 
   try {
-    const [dagRes, uurRes] = await Promise.all([
-      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=days&start=${start}&end=${end}`,
-        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
-      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
-        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
-    ]);
+    // EnergyZero prijzen
+    const ezRes = await fetch(
+      `https://api.energyzero.nl/v1/energyprices?fromDate=${datum}T00:00:00.000Z&tillDate=${datum}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
+    );
+    const ezData = await ezRes.json();
+    const ezPrijzen = (ezData?.Prices || []).map(p => ({
+      uur: new Date(p.readingDate).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
+      ez_spot:  p.price.toFixed(4),
+      ez_allIn: ((p.price + 0.03 + 0.13) * 1.21).toFixed(4),
+    }));
 
-    const dagData = await dagRes.json();
-    const uurData = await uurRes.json();
+    // ENTSO-E prijzen (Nederland biedzone)
+    const vandaag = new Date(datum + 'T00:00:00Z');
+    const morgen  = new Date(vandaag.getTime() + 86400000);
+    const entsoRes = await fetch(
+      `https://web-api.tp.entsoe.eu/api?securityToken=&documentType=A44&in_Domain=10YNL----------L&out_Domain=10YNL----------L&periodStart=${vandaag.toISOString().slice(0,10).replace(/-/g,'')}0000&periodEnd=${morgen.toISOString().slice(0,10).replace(/-/g,'')}0000`
+    );
+    const entsoText = await entsoRes.text();
 
     return Response.json({
-      dag_totals: dagData?.totals,
-      uur_totals: uurData?.totals,
+      datum,
+      energyzero: ezPrijzen,
+      entso_raw:  entsoText.slice(0, 500), // eerste 500 chars
     });
 
   } catch (err) {
