@@ -65,7 +65,7 @@ export async function GET(request) {
     const BcKwh    = totaalKwh('Bc');
     const accuKosten = (GbKwh + BgKwh + BcKwh) * 0.01;
 
-    const winst = winstBg - accuKosten;
+    const winst = winstBg + winstBc + winstPc - kostenGc - kostenGb - accuKosten;
 
     return Response.json({
       success: true,
