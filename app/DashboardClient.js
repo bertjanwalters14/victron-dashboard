@@ -35,6 +35,9 @@ export default function DashboardClient({ data }) {
           <RefreshButton />
         </div>
 
+        {/* Live vandaag */}
+        <LiveVandaag />
+
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
           <Card label="Totale winst"    value={`€${totaalWinst.toFixed(2)}`}  color="text-green-400"  sub="sinds installatie"      info={INFO.winst} />
@@ -162,6 +165,48 @@ function Card({ label, value, color, sub, info }) {
           <button onClick={() => setOpen(false)} className="mt-2 text-gray-400 hover:text-white block">Sluiten ✕</button>
         </div>
       )}
+    </div>
+  );
+}
+
+function LiveVandaag() {
+  const [winst, setWinst]   = useState(null);
+  const [tijd, setTijd]     = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  async function fetchLive() {
+    try {
+      const res  = await fetch('/api/live?secret=Nummer14!');
+      const data = await res.json();
+      if (data.success) {
+        setWinst(data.winst);
+        setTijd(data.bijgewerkt);
+      }
+    } catch {}
+    setLoading(false);
+  }
+
+  useState(() => {
+    fetchLive();
+    const interval = setInterval(fetchLive, 15 * 60 * 1000); // elke 15 min
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="bg-gradient-to-r from-green-900 to-emerald-800 rounded-xl p-5 mb-6 flex justify-between items-center">
+      <div>
+        <p className="text-green-300 text-sm font-medium">⚡ Vandaag (lopend)</p>
+        <p className="text-3xl font-bold text-white mt-1">
+          {loading ? '...' : `€${winst}`}
+        </p>
+        {tijd && <p className="text-green-400 text-xs mt-1">Bijgewerkt om {tijd} · ververst elke 15 min</p>}
+      </div>
+      <button
+        onClick={fetchLive}
+        className="bg-green-700 hover:bg-green-600 text-white text-sm px-3 py-2 rounded-lg transition-colors"
+      >
+        🔄 Nu verversen
+      </button>
     </div>
   );
 }
