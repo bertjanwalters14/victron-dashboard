@@ -15,32 +15,76 @@ export async function GET(request) {
   const end   = Math.floor(new Date(datumStr + 'T23:59:59').getTime() / 1000);
 
   try {
-    // Kwartierdata ophalen van Victron
+    // Victron kwartierdata
     const victronRes = await fetch(
       `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=15mins&start=${start}&end=${end}`,
       { headers: { 'x-authorization': `Token ${TOKEN}` } }
     );
-    const data = await victronRes.json();
+    const victronData = await victronRes.json();
+    const records = victronData?.records || {};
 
-    // Energieprijzen per kwartier ophalen
+    // Energieprijzen per uur
     const prijsRes = await fetch(
       `https://api.energyzero.nl/v1/energyprices?fromDate=${datumStr}T00:00:00.000Z&tillDate=${datumStr}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
     );
     const prijsData = await prijsRes.json();
+    const prijzen   = prijsData?.Prices || [];
+
+    // All-in prijs per uur
+    const prijsPerUur = {};
+    for (const p of prijzen) {
+      const uur = new Date(p.readingDate).getTime();
+      prijsPerUur[uur] = (p.price + 0.03 + 0.13) * 1.21;
+    }
+
+    function vindPrijs(tsMs) {
+      const d = new Date(tsMs);
+      d.setMinutes(0, 0, 0);
+      return prijsPerUur[d.getTime()] ?? 0.15;
+    }
+
+    // Bereken per kwartier
+    const details = [];
+    const alleTs = new Set([
+      ...(records.Bc || []).map(([ts]) => ts),
+      ...(records.Pc || []).map(([ts]) => ts),
+      ...(records.Gc || []).map(([ts]) => ts),
+      ...(records.Gb || []).map(([ts]) => ts),
+    ]);
+
+    const maakMap = (veld) => Object.fromEntries((records[veld] || []).map(([ts, v]) => [ts, v]));
+    const Bc = maakMap('Bc');
+    const Pc = maakMap('Pc');
+    const Gc = maakMap('Gc');
+    const Gb = maakMap('Gb');
+
+    let totaalWinst = 0;
+    for (const ts of [...alleTs].sort()) {
+      const prijs = vindPrijs(ts);
+      const bc = Bc[ts] || 0;
+      const pc = Pc[ts] || 0;
+      const gc = Gc[ts] || 0;
+      const gb = Gb[ts] || 0;
+      const winst = (bc + pc - gc - gb) * prijs;
+      totaalWinst += winst;
+      details.push({
+        tijd: new Date(ts).toISOString(),
+        prijs: prijs.toFixed(4),
+        bc: bc.toFixed(4),
+        pc: pc.toFixed(4),
+        gc: gc.toFixed(4),
+        gb: gb.toFixed(4),
+        winst: winst.toFixed(4),
+      });
+    }
 
     return Response.json({
-      victron_records: Object.keys(data?.records || {}),
-      victron_sample: {
-        Bg: data?.records?.Bg?.slice(0, 3),
-        Bc: data?.records?.Bc?.slice(0, 3),
-        Gc: data?.records?.Gc?.slice(0, 3),
-        Gb: data?.records?.Gb?.slice(0, 3),
-        Pc: data?.records?.Pc?.slice(0, 3),
-      },
-      prijzen_sample: prijsData?.Prices?.slice(0, 3),
-      totaal_kwartieren_victron: data?.records?.Bg?.length,
-      totaal_kwartieren_prijzen: prijsData?.Prices?.length,
+      datum: datumStr,
+      totaalWinst: totaalWinst.toFixed(2),
+      verwacht_victron: '5.70',
+      details,
     });
+
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
