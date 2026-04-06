@@ -71,6 +71,12 @@ export async function GET(request) {
       success: true,
       datum:   datumStr,
       winst:   winst.toFixed(2),
+      winstBg:     winstBg.toFixed(2),
+      winstBc:     winstBc.toFixed(2),
+      winstPc:     winstPc.toFixed(2),
+      kostenGc:    kostenGc.toFixed(2),
+      kostenGb:    kostenGb.toFixed(2),
+      accuKosten:  accuKosten.toFixed(2),
       bijgewerkt: nu.toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' }),
     });
 
