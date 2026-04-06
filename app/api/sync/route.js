@@ -88,13 +88,12 @@ export async function GET(request) {
     const PgKwh = totaalKwh('Pg');
     const PbKwh = totaalKwh('Pb');
     const GcKwh = totaalKwh('Gc');
-
     await upsertEnergieData({
       datum:           datumStr,
       solar_yield_kwh: BgKwh + PcKwh + PbKwh,
       verbruik_kwh:    BcKwh + PcKwh + GcKwh,
       net_import_kwh:  GbKwh + GcKwh,
-      net_export_kwh:  BgKwh,
+      net_export_kwh:  BgKwh + PgKwh,
       winst_euro:      totaalWinst,
     });
 
