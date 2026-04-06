@@ -14,10 +14,16 @@ export async function GET(request) {
   }
 
   try {
-    // 1. Gisteren
-    const gisteren = new Date();
-    gisteren.setDate(gisteren.getDate() - 1);
-    const datumStr = gisteren.toISOString().split('T')[0];
+    // 1. Datum (gisteren of opgegeven datum via ?datum=2026-04-04)
+    const datumParam = searchParams.get('datum');
+    let datumStr;
+    if (datumParam) {
+      datumStr = datumParam;
+    } else {
+      const gisteren = new Date();
+      gisteren.setDate(gisteren.getDate() - 1);
+      datumStr = gisteren.toISOString().split('T')[0];
+    }
     const start = Math.floor(new Date(datumStr + 'T00:00:00').getTime() / 1000);
     const end   = Math.floor(new Date(datumStr + 'T23:59:59').getTime() / 1000);
 
