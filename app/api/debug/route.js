@@ -14,12 +14,21 @@ export async function GET(request) {
   const end   = Math.floor(new Date(datumStr + 'T23:59:59').getTime() / 1000);
 
   try {
-    const res = await fetch(
-      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/dynamic-ess-kpis?start=${start}&end=${end}`,
-      { headers: { 'x-authorization': `Token ${TOKEN}` } }
-    );
-    const data = await res.json();
-    return Response.json(data);
+    // Probeer DESS prices endpoint
+    const [r1, r2, r3] = await Promise.all([
+      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/dynamic-ess-prices?start=${start}&end=${end}`,
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
+      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/price-data?start=${start}&end=${end}`,
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
+      fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }),
+    ]);
+
+    return Response.json({
+      dessprijzen: await r1.json(),
+      pricedata:   await r2.json(),
+      uurstats:    await r3.json(),
+    });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
