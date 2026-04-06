@@ -1,9 +1,9 @@
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
-function victronPrijs(spot) {
-  return (spot + 0.03 + 0.13) * 1.21;
-}
+function prijsInkoop(spot)  { return (spot + 0.03 + 0.13) * 1.21; } // volle all-in
+function prijsKosten(spot)  { return (spot + 0.03) * 1.21; }         // zonder EB
+function prijsSpot(spot)    { return spot * 1.21; }                   // alleen BTW
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -21,14 +21,12 @@ export async function GET(request) {
   const end   = Math.floor(new Date(datum + 'T23:59:59').getTime() / 1000);
 
   try {
-    // Victron uurdata
     const victronRes = await fetch(
       `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
       { headers: { 'x-authorization': `Token ${TOKEN}` } }
     );
     const records = (await victronRes.json())?.records || {};
 
-    // Energieprijzen
     const prijsRes = await fetch(
       `https://api.energyzero.nl/v1/energyprices?fromDate=${datum}T00:00:00.000Z&tillDate=${datum}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
     );
@@ -46,57 +44,58 @@ export async function GET(request) {
       return prijsPerUur[d.getTime()] ?? 0.10;
     }
 
-    function berekenSom(veld) {
-      return (records[veld] || []).reduce((s, [ts, kwh]) => s + kwh * victronPrijs(vindSpot(ts)), 0);
+    function berekenSom(veld, prijsFn) {
+      return (records[veld] || []).reduce((s, [ts, kwh]) => s + kwh * prijsFn(vindSpot(ts)), 0);
     }
 
     function totaalKwh(veld) {
       return (records[veld] || []).reduce((s, [, v]) => s + v, 0);
     }
 
-    // Formule 1: huidige (Bg+Bc+Pc-Gc-Gb-accuKosten)
-    const winstBg    = berekenSom('Bg');
-    const winstBc    = berekenSom('Bc');
-    const winstPc    = berekenSom('Pc');
-    const kostenGc   = berekenSom('Gc');
-    const kostenGb   = berekenSom('Gb');
+    // Baten altijd met volle all-in prijs
+    const winstBg = berekenSom('Bg', prijsInkoop);
+    const winstBc = berekenSom('Bc', prijsInkoop);
+    const winstPc = berekenSom('Pc', prijsInkoop);
+
+    // Kosten varianten
+    const kostenGc_allin    = berekenSom('Gc', prijsInkoop);
+    const kostenGc_zonderEB = berekenSom('Gc', prijsKosten);
+    const kostenGc_spot     = berekenSom('Gc', prijsSpot);
+    const kostenGb_allin    = berekenSom('Gb', prijsInkoop);
+    const kostenGb_zonderEB = berekenSom('Gb', prijsKosten);
+
     const GbKwh      = totaalKwh('Gb');
     const BgKwh      = totaalKwh('Bg');
     const BcKwh      = totaalKwh('Bc');
     const accuKosten = (GbKwh + BgKwh + BcKwh) * 0.01;
-    const formule1   = winstBg + winstBc + winstPc - kostenGc - kostenGb - accuKosten;
 
-    // Formule 2: nieuwe (Bc+Pc-Gc-Gb*0.01)
-    const GbKwh2   = totaalKwh('Gb');
-    const formule2 = winstBc + winstPc - kostenGc - (GbKwh2 * 0.01);
+    // Formule 1: alles all-in
+    const f1 = winstBg + winstBc + winstPc - kostenGc_allin - kostenGb_allin - accuKosten;
 
-    // Formule 3: alleen Bg - accuKosten
-    const formule3 = winstBg - accuKosten;
+    // Formule 4: baten all-in, kosten zonder EB
+    const f4 = winstBg + winstBc + winstPc - kostenGc_zonderEB - kostenGb_zonderEB - accuKosten;
+
+    // Formule 5: baten all-in, kosten alleen spot×BTW
+    const f5 = winstBg + winstBc + winstPc - kostenGc_spot - berekenSom('Gb', prijsSpot) - accuKosten;
 
     return Response.json({
       datum,
       kwh: {
-        Bg: BgKwh.toFixed(2),
-        Bc: BcKwh.toFixed(2),
-        Pc: totaalKwh('Pc').toFixed(2),
-        Pg: totaalKwh('Pg').toFixed(2),
-        Pb: totaalKwh('Pb').toFixed(2),
-        Gc: totaalKwh('Gc').toFixed(2),
-        Gb: GbKwh.toFixed(2),
+        Bg: BgKwh.toFixed(2), Bc: BcKwh.toFixed(2),
+        Pc: totaalKwh('Pc').toFixed(2), Pg: totaalKwh('Pg').toFixed(2),
+        Gc: totaalKwh('Gc').toFixed(2), Gb: GbKwh.toFixed(2),
       },
-      euro: {
-        winstBg:   winstBg.toFixed(2),
-        winstBc:   winstBc.toFixed(2),
-        winstPc:   winstPc.toFixed(2),
-        kostenGc:  kostenGc.toFixed(2),
-        kostenGb:  kostenGb.toFixed(2),
-        accuKosten: accuKosten.toFixed(2),
+      kosten_vergelijking: {
+        Gc_allin:    kostenGc_allin.toFixed(2),
+        Gc_zonderEB: kostenGc_zonderEB.toFixed(2),
+        Gc_spot:     kostenGc_spot.toFixed(2),
       },
       resultaten: {
-        formule1_huidig:        formule1.toFixed(2),
-        formule2_BcPcGcGb001:   formule2.toFixed(2),
-        formule3_BgAccu:        formule3.toFixed(2),
-      }
+        f1_alles_allin:          f1.toFixed(2),
+        f4_baten_allin_kost_zEB: f4.toFixed(2),
+        f5_baten_allin_kost_spot: f5.toFixed(2),
+      },
+      verwacht_victron: '?'
     });
 
   } catch (err) {
