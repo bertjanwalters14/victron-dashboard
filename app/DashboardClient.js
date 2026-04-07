@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-const BATTERIJ_KOSTEN   = 13500;
+const BATTERIJ_KOSTEN   = 11252; // €13.615 - €2.363 BTW teruggave
 const INSTALLATIE_DATUM = new Date('2026-04-03');
 
 const INFO = {
@@ -37,7 +37,7 @@ export default function DashboardClient({ data }) {
         <div className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
-            <p className="text-gray-400 mt-1">Installatie: 3 april 2026 · Investering: €13.500</p>
+            <p className="text-gray-400 mt-1">Installatie: 3 april 2026 · Investering: €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')} <span className="text-green-600 text-xs">(incl. BTW teruggave)</span></p>
           </div>
           <RefreshButton />
         </div>
@@ -48,7 +48,7 @@ export default function DashboardClient({ data }) {
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
           <Card label="Totale winst"    value={`€${totaalWinst.toFixed(2)}`}  color="text-green-400"  sub="sinds installatie"      info={INFO.winst} />
-          <Card label="ROI"             value={`${roiPct.toFixed(2)}%`}        color="text-blue-400"   sub="van €13.500"             info={INFO.roi} />
+          <Card label="ROI"             value={`${roiPct.toFixed(2)}%`}        color="text-blue-400"             sub="van €11.252"             info={INFO.roi} />
           <Card label="Gem. dagwinst"   value={`€${gemDagwinst.toFixed(2)}`}   color="text-yellow-400" sub={`over ${aantalDagenData} dag${aantalDagenData !== 1 ? 'en' : ''} data`} info={INFO.dagwinst} />
           <Card
             label="Terugverdiend op"
