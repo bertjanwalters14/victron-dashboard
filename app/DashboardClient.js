@@ -162,7 +162,7 @@ function P1Vergelijking() {
         // P1 data (2025) en Victron data (2026) parallel ophalen
         const [p1Res, vrmRes] = await Promise.all([
           fetch('/api/p1?secret=Nummer14!'),
-          fetch('/api/data'),
+          fetch('/api/energie?secret=Nummer14!'),
         ]);
         const p1Json  = await p1Res.json();
         const vrmJson = await vrmRes.json();
@@ -182,8 +182,8 @@ function P1Vergelijking() {
         }
 
         // 2026 data uit Victron (energie_data)
-        if (Array.isArray(vrmJson)) {
-          vrmJson.forEach(r => {
+        if (vrmJson.success && Array.isArray(vrmJson.data)) {
+          vrmJson.data.forEach(r => {
             const datum   = String(r.datum).slice(0,10);
             const maandNr = parseInt(datum.slice(5,7));
             const dag     = parseInt(datum.slice(8,10));
