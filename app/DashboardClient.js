@@ -262,6 +262,9 @@ function P1Vergelijking() {
                         <td className="py-1 text-gray-400">{dag}</td>
                         <td className="py-1 text-right text-red-400">{d25 ? d25.imp.toFixed(2) : "—"}</td>
                         <td className="py-1 text-right text-green-400">{d26 ? d26.imp.toFixed(2) : "—"}</td>
+                        <td className={`py-1 text-right font-medium ${verschil < 0 ? 'text-green-400' : verschil > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                          {verschil !== null ? (verschil > 0 ? "+" : "") + verschil : "—"}
+                        </td>
                       </tr>
                     );
                   })}
