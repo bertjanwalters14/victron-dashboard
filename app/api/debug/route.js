@@ -1,9 +1,7 @@
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
-function prijsInkoop(spot)  { return (spot + 0.03 + 0.13) * 1.21; } // volle all-in
-function prijsKosten(spot)  { return (spot + 0.03) * 1.21; }         // zonder EB
-function prijsSpot(spot)    { return spot * 1.21; }                   // alleen BTW
+function prijsAllin(spot) { return (spot + 0.03 + 0.13) * 1.21; }
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -44,67 +42,57 @@ export async function GET(request) {
       return prijsPerUur[d.getTime()] ?? 0.10;
     }
 
-    function berekenSom(veld, prijsFn) {
-      return (records[veld] || []).reduce((s, [ts, kwh]) => s + kwh * prijsFn(vindSpot(ts)), 0);
+    function berekenSom(veld) {
+      return (records[veld] || []).reduce((s, [ts, kwh]) => s + kwh * prijsAllin(vindSpot(ts)), 0);
     }
 
     function totaalKwh(veld) {
       return (records[veld] || []).reduce((s, [, v]) => s + v, 0);
     }
 
-    // Baten altijd met volle all-in prijs
-    const winstBg = berekenSom('Bg', prijsInkoop);
-    const winstBc = berekenSom('Bc', prijsInkoop);
-    const winstPc = berekenSom('Pc', prijsInkoop);
-
-    // Kosten varianten
-    const kostenGc_allin    = berekenSom('Gc', prijsInkoop);
-    const kostenGc_zonderEB = berekenSom('Gc', prijsKosten);
-    const kostenGc_spot     = berekenSom('Gc', prijsSpot);
-    const kostenGb_allin    = berekenSom('Gb', prijsInkoop);
-    const kostenGb_zonderEB = berekenSom('Gb', prijsKosten);
-
-    const GbKwh      = totaalKwh('Gb');
-    const BgKwh      = totaalKwh('Bg');
-    const BcKwh      = totaalKwh('Bc');
+    const BgKwh = totaalKwh('Bg');
+    const BcKwh = totaalKwh('Bc');
+    const GbKwh = totaalKwh('Gb');
     const accuKosten = (GbKwh + BgKwh + BcKwh) * 0.01;
 
-    // Formule 1: alles all-in
-    const f1 = winstBg + winstBc + winstPc - kostenGc_allin - kostenGb_allin - accuKosten;
+    // 1. ZONDER batterij
+    // Zon gaat direct naar net (Pg) of verbruikers (Pc)
+    // Wat je van net koopt is Gc + Bc (zonder batterij koop je Bc van net)
+    const zonderBatterij =
+      berekenSom('Pg') +  // zon naar net
+      berekenSom('Pc') +  // zon naar verbruikers (besparing)
+      berekenSom('Pb') -  // zon die nu naar batterij gaat, zonder batterij naar net
+      berekenSom('Gc') -  // wat je van net koopt
+      berekenSom('Bc');   // zonder batterij koop je dit van net (extra kosten)
 
-    // Formule 4: baten all-in, kosten zonder EB
-    const f4 = winstBg + winstBc + winstPc - kostenGc_zonderEB - kostenGb_zonderEB - accuKosten;
+    // 2. MET batterij (huidige berekening)
+    const metBatterij =
+      berekenSom('Bg') +
+      berekenSom('Bc') +
+      berekenSom('Pc') -
+      berekenSom('Gc') -
+      berekenSom('Gb') -
+      accuKosten;
 
-    // Formule 5: baten all-in, kosten alleen spot×BTW
-    const f5 = winstBg + winstBc + winstPc - kostenGc_spot - berekenSom('Gb', prijsSpot) - accuKosten;
-
-    // Echte batterij winst berekening
-    const winstBg_bat  = berekenSom('Bg', prijsInkoop);  // duur verkopen
-    const kostenPb_bat = berekenSom('Pb', prijsInkoop);  // zon die je anders direct had verkocht
-    const winstBc_bat  = berekenSom('Bc', prijsInkoop);  // vermeden inkoop
-    const kostenGb_bat = berekenSom('Gb', prijsInkoop);  // laadkosten
-    const accuKosten2  = (totaalKwh('Gb') + totaalKwh('Bg') + totaalKwh('Bc')) * 0.01;
-
-    const echteWinst = winstBg_bat - kostenPb_bat + winstBc_bat - kostenGb_bat - accuKosten2;
+    // 3. BATTERIJ BIJDRAGE
+    const batterijBijdrage = metBatterij - zonderBatterij;
 
     return Response.json({
       datum,
       kwh: {
-        Bg: BgKwh.toFixed(2), Bc: BcKwh.toFixed(2),
-        Pc: totaalKwh('Pc').toFixed(2), Pg: totaalKwh('Pg').toFixed(2),
+        Bg: BgKwh.toFixed(2),
+        Bc: BcKwh.toFixed(2),
+        Pc: totaalKwh('Pc').toFixed(2),
+        Pg: totaalKwh('Pg').toFixed(2),
         Pb: totaalKwh('Pb').toFixed(2),
-        Gc: totaalKwh('Gc').toFixed(2), Gb: GbKwh.toFixed(2),
+        Gc: totaalKwh('Gc').toFixed(2),
+        Gb: GbKwh.toFixed(2),
       },
-      huidig_dashboard: f1.toFixed(2),
-      echte_batterij_winst: {
-        winstBg:    winstBg_bat.toFixed(2),
-        minPb:      `-${kostenPb_bat.toFixed(2)}`,
-        winstBc:    winstBc_bat.toFixed(2),
-        minGb:      `-${kostenGb_bat.toFixed(2)}`,
-        minAccu:    `-${accuKosten2.toFixed(2)}`,
-        totaal:     echteWinst.toFixed(2),
-      },
-      verwacht_victron: '?'
+      resultaten: {
+        zonder_batterij:    zonderBatterij.toFixed(2),
+        met_batterij:       metBatterij.toFixed(2),
+        batterij_bijdrage:  batterijBijdrage.toFixed(2),
+      }
     });
 
   } catch (err) {
