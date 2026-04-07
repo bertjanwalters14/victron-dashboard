@@ -2,7 +2,7 @@ const fs   = require('fs');
 const path = require('path');
 
 // Pas dit aan naar jouw CSV bestandslocatie
-const CSV_PAD = path.join(__dirname, '..', 'P1e20225012026407.csv');
+const CSV_PAD = path.join(__dirname, '..', 'P1e-2022-5-01-2026-4-07.csv');
 const API_URL = 'https://victron-dashboard.vercel.app/api/p1?secret=Nummer14!';
 const START_DATUM = new Date('2025-04-03');
 
