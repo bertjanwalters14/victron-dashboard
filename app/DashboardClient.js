@@ -2,20 +2,20 @@
 import { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-const BATTERIJ_KOSTEN   = 11252; // €13.615 - €2.363 BTW teruggave
+const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-03');
+const MAAND_NAMEN       = ["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"];
 
 const INFO = {
   winst:        'Het totale bedrag dat de batterij heeft opgeleverd sinds installatie. Dit groeit elke dag automatisch.',
-  roi:          'Hoeveel procent van je €13.500 investering je al hebt terugverdiend. Stijgt naarmate de batterij meer oplevert.',
+  roi:          'Hoeveel procent van je €11.252 investering je al hebt terugverdiend. Stijgt naarmate de batterij meer oplevert.',
   dagwinst:     'Het gemiddelde bedrag dat de batterij per dag oplevert. Wordt nauwkeuriger naarmate er meer data beschikbaar is.',
-  terugverdien: 'De geschatte datum waarop je je volledige investering van €13.500 hebt terugverdiend. Gebaseerd op de huidige gemiddelde dagwinst.',
+  terugverdien: 'De geschatte datum waarop je je volledige investering van €11.252 hebt terugverdiend. Gebaseerd op de huidige gemiddelde dagwinst.',
   projectie:    'Schatting op basis van het gemiddelde van alle beschikbare dagen. Wordt nauwkeuriger naarmate er meer data is.',
 };
 
 export default function DashboardClient({ data }) {
   const totaalWinst        = data.reduce((s, d) => s + parseFloat(d.winst_euro || 0), 0);
-  const dagenActief        = Math.max(1, Math.floor((new Date() - INSTALLATIE_DATUM) / 86400000));
   const aantalDagenData    = data.length;
   const gemDagwinst        = aantalDagenData > 0 ? totaalWinst / aantalDagenData : 0;
   const dagenTerugverdiend = gemDagwinst > 0 ? BATTERIJ_KOSTEN / gemDagwinst : null;
@@ -23,17 +23,14 @@ export default function DashboardClient({ data }) {
     ? new Date(INSTALLATIE_DATUM.getTime() + dagenTerugverdiend * 86400000)
     : null;
   const roiPct             = (totaalWinst / BATTERIJ_KOSTEN) * 100;
-
-  // Projecties
-  const maandProjectie = gemDagwinst * 30;
-  const jaarProjectie  = gemDagwinst * 365;
-  const terugverdienJaren = gemDagwinst > 0 ? (BATTERIJ_KOSTEN / (gemDagwinst * 365)).toFixed(1) : null;
+  const maandProjectie     = gemDagwinst * 30;
+  const jaarProjectie      = gemDagwinst * 365;
+  const terugverdienJaren  = gemDagwinst > 0 ? (BATTERIJ_KOSTEN / (gemDagwinst * 365)).toFixed(1) : null;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-5xl mx-auto px-4 py-6 md:py-10">
 
-        {/* Header */}
         <div className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
@@ -42,26 +39,21 @@ export default function DashboardClient({ data }) {
           <RefreshButton />
         </div>
 
-        {/* Live vandaag */}
         <LiveVandaag />
 
-        {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
           <Card label="Totale winst"    value={`€${totaalWinst.toFixed(2)}`}  color="text-green-400"  sub="sinds installatie"      info={INFO.winst} />
-          <Card label="ROI"             value={`${roiPct.toFixed(2)}%`}        color="text-blue-400"             sub="van €11.252"             info={INFO.roi} />
+          <Card label="ROI"             value={`${roiPct.toFixed(2)}%`}        color="text-blue-400"   sub="van €11.252"             info={INFO.roi} />
           <Card label="Gem. dagwinst"   value={`€${gemDagwinst.toFixed(2)}`}   color="text-yellow-400" sub={`over ${aantalDagenData} dag${aantalDagenData !== 1 ? 'en' : ''} data`} info={INFO.dagwinst} />
           <Card
             label="Terugverdiend op"
-            value={terugverdienDatum
-              ? terugverdienDatum.toLocaleDateString('nl-NL', { month: 'short', year: 'numeric' })
-              : '—'}
+            value={terugverdienDatum ? terugverdienDatum.toLocaleDateString('nl-NL', { month: 'short', year: 'numeric' }) : '—'}
             color="text-purple-400"
             sub={dagenTerugverdiend ? `over ${Math.round(dagenTerugverdiend / 365 * 10) / 10} jaar` : 'nog berekening nodig'}
             info={INFO.terugverdien}
           />
         </div>
 
-        {/* Maandprojectie */}
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <div className="flex items-center gap-2 mb-4">
             <h2 className="font-semibold text-gray-200">📈 Projectie</h2>
@@ -69,18 +61,8 @@ export default function DashboardClient({ data }) {
             <InfoIcon text={INFO.projectie} />
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <ProjectieCard
-              label="Per maand"
-              value={`€${maandProjectie.toFixed(0)}`}
-              sub="geschatte maandwinst"
-              color="text-emerald-400"
-            />
-            <ProjectieCard
-              label="Per jaar"
-              value={`€${jaarProjectie.toFixed(0)}`}
-              sub="geschatte jaarwinst"
-              color="text-teal-400"
-            />
+            <ProjectieCard label="Per maand"       value={`€${maandProjectie.toFixed(0)}`} sub="geschatte maandwinst" color="text-emerald-400" />
+            <ProjectieCard label="Per jaar"         value={`€${jaarProjectie.toFixed(0)}`}  sub="geschatte jaarwinst" color="text-teal-400" />
             <ProjectieCard
               label="Terugverdientijd"
               value={terugverdienJaren ? `${terugverdienJaren} jaar` : '—'}
@@ -95,17 +77,13 @@ export default function DashboardClient({ data }) {
           )}
         </div>
 
-        {/* Voortgangsbalk */}
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <div className="flex justify-between items-center mb-3">
             <span className="text-gray-300 font-medium">Terugverdien voortgang</span>
             <span className="text-white font-bold text-lg">{roiPct.toFixed(2)}%</span>
           </div>
           <div className="w-full bg-gray-700 rounded-full h-5">
-            <div
-              className="bg-gradient-to-r from-green-500 to-emerald-400 h-5 rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(roiPct, 100)}%` }}
-            />
+            <div className="bg-gradient-to-r from-green-500 to-emerald-400 h-5 rounded-full transition-all duration-500" style={{ width: `${Math.min(roiPct, 100)}%` }} />
           </div>
           <div className="flex justify-between text-xs text-gray-500 mt-2">
             <span>€0</span>
@@ -114,7 +92,6 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        {/* Grafiek + Tabel */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div className="bg-gray-800 rounded-xl p-5">
             <h2 className="font-semibold text-gray-200 mb-4">Cumulatieve winst</h2>
@@ -124,18 +101,12 @@ export default function DashboardClient({ data }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis dataKey="datum" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={d => String(d).slice(5)} />
                   <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} />
-                  <Tooltip
-                    formatter={v => [`€${v.toFixed(2)}`, 'Winst']}
-                    contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
-                    labelStyle={{ color: '#9CA3AF' }}
-                  />
+                  <Tooltip formatter={v => [`€${v.toFixed(2)}`, 'Winst']} contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }} labelStyle={{ color: '#9CA3AF' }} />
                   <Line type="monotone" dataKey="cumulatief" stroke="#10B981" dot={false} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-[220px] flex items-center justify-center text-gray-500 text-sm">
-                Nog geen data beschikbaar
-              </div>
+              <div className="h-[220px] flex items-center justify-center text-gray-500 text-sm">Nog geen data beschikbaar</div>
             )}
           </div>
 
@@ -155,9 +126,7 @@ export default function DashboardClient({ data }) {
                   <tbody>
                     {[...data].reverse().slice(0, 8).map(d => (
                       <tr key={d.datum} className="border-b border-gray-700">
-                        <td className="py-2 text-gray-300">
-                          {new Date(d.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
-                        </td>
+                        <td className="py-2 text-gray-300">{new Date(d.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}</td>
                         <td className="py-2 text-right text-yellow-400">{parseFloat(d.solar_yield_kwh || 0).toFixed(1)}</td>
                         <td className="py-2 text-right text-blue-400">{parseFloat(d.net_export_kwh || 0).toFixed(2)}</td>
                         <td className="py-2 text-right text-green-400 font-medium">€{parseFloat(d.winst_euro || 0).toFixed(2)}</td>
@@ -167,18 +136,132 @@ export default function DashboardClient({ data }) {
                 </table>
               </div>
             ) : (
-              <div className="h-full flex items-center justify-center text-gray-500 text-sm">
-                Nog geen data beschikbaar
-              </div>
+              <div className="h-full flex items-center justify-center text-gray-500 text-sm">Nog geen data beschikbaar</div>
             )}
           </div>
         </div>
 
-        <p className="text-center text-gray-600 text-xs">
+        <P1Vergelijking />
+
+        <p className="text-center text-gray-600 text-xs mt-6">
           Data wordt elke nacht om 00:01 automatisch bijgewerkt
         </p>
       </div>
     </main>
+  );
+}
+
+function P1Vergelijking() {
+  const [maanden, setMaanden] = useState([]);
+  const [open, setOpen]       = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useState(() => {
+    async function load() {
+      try {
+        const res  = await fetch('/api/p1?secret=Nummer14!');
+        const json = await res.json();
+        if (!json.success) return;
+
+        const byDag = {};
+        json.data.forEach(r => { byDag[r.datum] = { imp: parseFloat(r.import_kwh), exp: parseFloat(r.export_kwh) }; });
+
+        const byMaand = {};
+        Object.entries(byDag).forEach(([datum, v]) => {
+          const jaar    = datum.slice(0,4);
+          const maandNr = parseInt(datum.slice(5,7));
+          const dag     = parseInt(datum.slice(8,10));
+          if (!byMaand[maandNr]) byMaand[maandNr] = {};
+          if (!byMaand[maandNr][jaar]) byMaand[maandNr][jaar] = {};
+          byMaand[maandNr][jaar][dag] = v;
+        });
+
+        const result = Object.entries(byMaand).sort(([a],[b]) => parseInt(a)-parseInt(b)).map(([nr, jaren]) => {
+          const n   = parseInt(nr);
+          const j25 = jaren["2025"] || {}, j26 = jaren["2026"] || {};
+          const dagen = Array.from(new Set([...Object.keys(j25),...Object.keys(j26)].map(Number))).sort((a,b)=>a-b);
+          return {
+            nr: n, label: MAAND_NAMEN[n-1], dagen, j25, j26,
+            tot25imp: Object.values(j25).reduce((s,v)=>s+v.imp,0),
+            tot26imp: Object.values(j26).reduce((s,v)=>s+v.imp,0),
+            tot25exp: Object.values(j25).reduce((s,v)=>s+v.exp,0),
+            tot26exp: Object.values(j26).reduce((s,v)=>s+v.exp,0),
+          };
+        });
+        setMaanden(result);
+      } catch(e) { console.error(e); }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  if (loading) return <div className="bg-gray-800 rounded-xl p-5 mb-6 text-gray-500 text-sm">P1 data laden...</div>;
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <h2 className="font-semibold text-gray-200 mb-1">⚡ Netverbruik vergelijking</h2>
+      <p className="text-xs text-gray-500 mb-4">2025 (zonder batterij) vs 2026 (met batterij) · vanaf 3 april</p>
+      <div className="flex gap-4 text-xs text-gray-400 mb-3">
+        <span>Import: <span className="text-red-400">2025</span> vs <span className="text-blue-400">2026</span></span>
+        <span>Export: <span className="text-green-400">2025</span> vs <span className="text-purple-400">2026</span></span>
+      </div>
+      {maanden.map(m => (
+        <div key={m.nr} className="mb-2 border border-gray-700 rounded-lg overflow-hidden">
+          <div
+            onClick={() => setOpen(o => ({...o, [m.nr]: !o[m.nr]}))}
+            className="flex justify-between items-center px-4 py-3 bg-gray-700 cursor-pointer hover:bg-gray-600 select-none"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{open[m.nr] ? "▼" : "▶"}</span>
+              <span className="text-sm font-medium text-gray-200 capitalize">{m.label}</span>
+            </div>
+            <div className="flex gap-4 text-xs">
+              <span>Import: <span className="text-red-400">{m.tot25imp.toFixed(1)}</span> → <span className="text-blue-400">{m.tot26imp.toFixed(1)}</span> kWh</span>
+              <span>Export: <span className="text-green-400">{m.tot25exp.toFixed(1)}</span> → <span className="text-purple-400">{m.tot26exp.toFixed(1)}</span> kWh</span>
+              {m.tot26imp > 0 && m.tot25imp > 0 && (
+                <span className={m.tot26imp < m.tot25imp ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                  {m.tot26imp < m.tot25imp ? "▼" : "▲"} {Math.abs(m.tot26imp - m.tot25imp).toFixed(1)} kWh
+                </span>
+              )}
+            </div>
+          </div>
+          {open[m.nr] && (
+            <div className="px-4 pb-3 overflow-x-auto">
+              <table className="w-full text-xs mt-2">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-2 text-gray-500 font-normal">Dag</th>
+                    <th className="text-right py-2 text-red-400 font-normal">Import 2025</th>
+                    <th className="text-right py-2 text-blue-400 font-normal">Import 2026</th>
+                    <th className="text-right py-2 text-gray-500 font-normal">Verschil</th>
+                    <th className="text-right py-2 text-green-400 font-normal">Export 2025</th>
+                    <th className="text-right py-2 text-purple-400 font-normal">Export 2026</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {m.dagen.map(dag => {
+                    const d25 = m.j25[dag], d26 = m.j26[dag];
+                    const verschil = d25 && d26 ? (d26.imp - d25.imp).toFixed(2) : null;
+                    return (
+                      <tr key={dag} className="border-b border-gray-700">
+                        <td className="py-1 text-gray-400">{dag}</td>
+                        <td className="py-1 text-right text-red-400">{d25 ? d25.imp.toFixed(2) : "—"}</td>
+                        <td className="py-1 text-right text-blue-400">{d26 ? d26.imp.toFixed(2) : "—"}</td>
+                        <td className={`py-1 text-right font-medium ${verschil < 0 ? 'text-green-400' : verschil > 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                          {verschil !== null ? (verschil > 0 ? "+" : "") + verschil : "—"}
+                        </td>
+                        <td className="py-1 text-right text-green-400">{d25 ? d25.exp.toFixed(2) : "—"}</td>
+                        <td className="py-1 text-right text-purple-400">{d26 ? d26.exp.toFixed(2) : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -217,11 +300,7 @@ function Card({ label, value, color, sub, info }) {
     <div className="bg-gray-800 rounded-xl p-4 md:p-5 relative">
       <div className="flex justify-between items-start mb-1">
         <p className="text-gray-400 text-xs">{label}</p>
-        <button
-          onClick={() => setOpen(!open)}
-          className="text-gray-500 hover:text-gray-300 transition-colors ml-1 flex-shrink-0"
-          aria-label="Info"
-        >
+        <button onClick={() => setOpen(!open)} className="text-gray-500 hover:text-gray-300 transition-colors ml-1 flex-shrink-0" aria-label="Info">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20A10 10 0 0012 2z" />
           </svg>
