@@ -220,9 +220,6 @@ function P1Vergelijking() {
               <span className="text-gray-400">
                 Import: <span className="text-red-400">{m.tot25imp.toFixed(1)}</span> → <span className="text-green-400">{m.tot26imp.toFixed(1)}</span> kWh
               </span>
-              <span className="text-gray-500 text-xs">
-                Export: {m.tot25exp.toFixed(1)} → {m.tot26exp.toFixed(1)} kWh
-              </span>
               {m.tot26imp > 0 && m.tot25imp > 0 && (
                 <span className={`font-bold text-base ${m.tot26imp < m.tot25imp ? 'text-green-400' : 'text-red-400'}`}>
                   {m.tot26imp < m.tot25imp ? "▼" : "▲"} {Math.abs(m.tot26imp - m.tot25imp).toFixed(1)} kWh
@@ -233,14 +230,12 @@ function P1Vergelijking() {
           {open[m.nr] && (
             <div className="px-4 pb-3 overflow-x-auto">
               <table className="w-full text-xs mt-2">
-                <thead>
+                                  <thead>
                   <tr className="border-b border-gray-700">
                     <th className="text-left py-2 text-gray-500 font-normal">Dag</th>
                     <th className="text-right py-2 text-red-400 font-normal">Import 2025</th>
                     <th className="text-right py-2 text-green-400 font-normal">Import 2026</th>
                     <th className="text-right py-2 text-gray-400 font-normal">Verschil</th>
-                    <th className="text-right py-2 text-gray-500 font-normal">Export 2025</th>
-                    <th className="text-right py-2 text-gray-400 font-normal">Export 2026</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -255,8 +250,6 @@ function P1Vergelijking() {
                         <td className={`py-1 text-right font-medium ${verschil < 0 ? 'text-green-400' : verschil > 0 ? 'text-red-400' : 'text-gray-500'}`}>
                           {verschil !== null ? (verschil > 0 ? "+" : "") + verschil : "—"}
                         </td>
-                        <td className="py-1 text-right text-gray-500">{d25 ? d25.exp.toFixed(2) : "—"}</td>
-                        <td className="py-1 text-right text-gray-400">{d26 ? d26.exp.toFixed(2) : "—"}</td>
                       </tr>
                     );
                   })}
