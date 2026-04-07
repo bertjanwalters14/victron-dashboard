@@ -176,18 +176,20 @@ function P1Vergelijking() {
           byMaand[maandNr][jaar][dag] = v;
         });
 
-        const result = Object.entries(byMaand).sort(([a],[b]) => parseInt(a)-parseInt(b)).map(([nr, jaren]) => {
-          const n   = parseInt(nr);
-          const j25 = jaren["2025"] || {}, j26 = jaren["2026"] || {};
-          const dagen = Array.from(new Set([...Object.keys(j25),...Object.keys(j26)].map(Number))).sort((a,b)=>a-b);
-          return {
-            nr: n, label: MAAND_NAMEN[n-1], dagen, j25, j26,
-            tot25imp: Object.values(j25).reduce((s,v)=>s+v.imp,0),
-            tot26imp: Object.values(j26).reduce((s,v)=>s+v.imp,0),
-            tot25exp: Object.values(j25).reduce((s,v)=>s+v.exp,0),
-            tot26exp: Object.values(j26).reduce((s,v)=>s+v.exp,0),
-          };
-        });
+        const result = Object.entries(byMaand).sort(([a],[b]) => parseInt(a)-parseInt(b))
+          .filter(([, jaren]) => jaren["2025"] && jaren["2026"]) // alleen maanden met beide jaren
+          .map(([nr, jaren]) => {
+            const n   = parseInt(nr);
+            const j25 = jaren["2025"] || {}, j26 = jaren["2026"] || {};
+            const dagen = Array.from(new Set([...Object.keys(j25),...Object.keys(j26)].map(Number))).sort((a,b)=>a-b);
+            return {
+              nr: n, label: MAAND_NAMEN[n-1], dagen, j25, j26,
+              tot25imp: Object.values(j25).reduce((s,v)=>s+v.imp,0),
+              tot26imp: Object.values(j26).reduce((s,v)=>s+v.imp,0),
+              tot25exp: Object.values(j25).reduce((s,v)=>s+v.exp,0),
+              tot26exp: Object.values(j26).reduce((s,v)=>s+v.exp,0),
+            };
+          });
         setMaanden(result);
       } catch(e) { console.error(e); }
       setLoading(false);
