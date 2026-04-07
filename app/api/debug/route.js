@@ -78,22 +78,31 @@ export async function GET(request) {
     // Formule 5: baten all-in, kosten alleen spot×BTW
     const f5 = winstBg + winstBc + winstPc - kostenGc_spot - berekenSom('Gb', prijsSpot) - accuKosten;
 
+    // Echte batterij winst berekening
+    const winstBg_bat  = berekenSom('Bg', prijsInkoop);  // duur verkopen
+    const kostenPb_bat = berekenSom('Pb', prijsInkoop);  // zon die je anders direct had verkocht
+    const winstBc_bat  = berekenSom('Bc', prijsInkoop);  // vermeden inkoop
+    const kostenGb_bat = berekenSom('Gb', prijsInkoop);  // laadkosten
+    const accuKosten2  = (totaalKwh('Gb') + totaalKwh('Bg') + totaalKwh('Bc')) * 0.01;
+
+    const echteWinst = winstBg_bat - kostenPb_bat + winstBc_bat - kostenGb_bat - accuKosten2;
+
     return Response.json({
       datum,
       kwh: {
         Bg: BgKwh.toFixed(2), Bc: BcKwh.toFixed(2),
         Pc: totaalKwh('Pc').toFixed(2), Pg: totaalKwh('Pg').toFixed(2),
+        Pb: totaalKwh('Pb').toFixed(2),
         Gc: totaalKwh('Gc').toFixed(2), Gb: GbKwh.toFixed(2),
       },
-      kosten_vergelijking: {
-        Gc_allin:    kostenGc_allin.toFixed(2),
-        Gc_zonderEB: kostenGc_zonderEB.toFixed(2),
-        Gc_spot:     kostenGc_spot.toFixed(2),
-      },
-      resultaten: {
-        f1_alles_allin:          f1.toFixed(2),
-        f4_baten_allin_kost_zEB: f4.toFixed(2),
-        f5_baten_allin_kost_spot: f5.toFixed(2),
+      huidig_dashboard: f1.toFixed(2),
+      echte_batterij_winst: {
+        winstBg:    winstBg_bat.toFixed(2),
+        minPb:      `-${kostenPb_bat.toFixed(2)}`,
+        winstBc:    winstBc_bat.toFixed(2),
+        minGb:      `-${kostenGb_bat.toFixed(2)}`,
+        minAccu:    `-${accuKosten2.toFixed(2)}`,
+        totaal:     echteWinst.toFixed(2),
       },
       verwacht_victron: '?'
     });
