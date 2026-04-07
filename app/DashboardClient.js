@@ -159,25 +159,42 @@ function P1Vergelijking() {
   useState(() => {
     async function load() {
       try {
-        const res  = await fetch('/api/p1?secret=Nummer14!');
-        const json = await res.json();
-        if (!json.success) return;
-
-        const byDag = {};
-        json.data.forEach(r => { byDag[r.datum] = { imp: parseFloat(r.import_kwh), exp: parseFloat(r.export_kwh) }; });
+        // P1 data (2025) en Victron data (2026) parallel ophalen
+        const [p1Res, vrmRes] = await Promise.all([
+          fetch('/api/p1?secret=Nummer14!'),
+          fetch('/api/data'),
+        ]);
+        const p1Json  = await p1Res.json();
+        const vrmJson = await vrmRes.json();
 
         const byMaand = {};
-        Object.entries(byDag).forEach(([datum, v]) => {
-          const jaar    = datum.slice(0,4);
-          const maandNr = parseInt(datum.slice(5,7));
-          const dag     = parseInt(datum.slice(8,10));
-          if (!byMaand[maandNr]) byMaand[maandNr] = {};
-          if (!byMaand[maandNr][jaar]) byMaand[maandNr][jaar] = {};
-          byMaand[maandNr][jaar][dag] = v;
-        });
+
+        // 2025 data uit P1
+        if (p1Json.success) {
+          p1Json.data.forEach(r => {
+            const datum   = String(r.datum).slice(0,10);
+            const maandNr = parseInt(datum.slice(5,7));
+            const dag     = parseInt(datum.slice(8,10));
+            if (!byMaand[maandNr]) byMaand[maandNr] = {};
+            if (!byMaand[maandNr]["2025"]) byMaand[maandNr]["2025"] = {};
+            byMaand[maandNr]["2025"][dag] = { imp: parseFloat(r.import_kwh) };
+          });
+        }
+
+        // 2026 data uit Victron (energie_data)
+        if (Array.isArray(vrmJson)) {
+          vrmJson.forEach(r => {
+            const datum   = String(r.datum).slice(0,10);
+            const maandNr = parseInt(datum.slice(5,7));
+            const dag     = parseInt(datum.slice(8,10));
+            if (!byMaand[maandNr]) byMaand[maandNr] = {};
+            if (!byMaand[maandNr]["2026"]) byMaand[maandNr]["2026"] = {};
+            byMaand[maandNr]["2026"][dag] = { imp: parseFloat(r.net_import_kwh || 0) };
+          });
+        }
 
         const result = Object.entries(byMaand).sort(([a],[b]) => parseInt(a)-parseInt(b))
-          .filter(([, jaren]) => jaren["2025"] && jaren["2026"]) // alleen maanden met beide jaren
+          .filter(([, jaren]) => jaren["2025"] && jaren["2026"])
           .map(([nr, jaren]) => {
             const n   = parseInt(nr);
             const j25 = jaren["2025"] || {}, j26 = jaren["2026"] || {};
@@ -186,8 +203,6 @@ function P1Vergelijking() {
               nr: n, label: MAAND_NAMEN[n-1], dagen, j25, j26,
               tot25imp: Object.values(j25).reduce((s,v)=>s+v.imp,0),
               tot26imp: Object.values(j26).reduce((s,v)=>s+v.imp,0),
-              tot25exp: Object.values(j25).reduce((s,v)=>s+v.exp,0),
-              tot26exp: Object.values(j26).reduce((s,v)=>s+v.exp,0),
             };
           });
         setMaanden(result);
@@ -247,9 +262,6 @@ function P1Vergelijking() {
                         <td className="py-1 text-gray-400">{dag}</td>
                         <td className="py-1 text-right text-red-400">{d25 ? d25.imp.toFixed(2) : "—"}</td>
                         <td className="py-1 text-right text-green-400">{d26 ? d26.imp.toFixed(2) : "—"}</td>
-                        <td className={`py-1 text-right font-medium ${verschil < 0 ? 'text-green-400' : verschil > 0 ? 'text-red-400' : 'text-gray-500'}`}>
-                          {verschil !== null ? (verschil > 0 ? "+" : "") + verschil : "—"}
-                        </td>
                       </tr>
                     );
                   })}
