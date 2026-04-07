@@ -204,8 +204,7 @@ function P1Vergelijking() {
       <h2 className="font-semibold text-gray-200 mb-1">⚡ Netverbruik vergelijking</h2>
       <p className="text-xs text-gray-500 mb-4">2025 (zonder batterij) vs 2026 (met batterij) · vanaf 3 april</p>
       <div className="flex gap-4 text-xs text-gray-400 mb-3">
-        <span>Import: <span className="text-red-400">2025</span> vs <span className="text-blue-400">2026</span></span>
-        <span>Export: <span className="text-green-400">2025</span> vs <span className="text-purple-400">2026</span></span>
+        <span>🔴 Import 2025 → <span className="text-green-400">Import 2026</span> · minder is beter</span>
       </div>
       {maanden.map(m => (
         <div key={m.nr} className="mb-2 border border-gray-700 rounded-lg overflow-hidden">
@@ -217,11 +216,15 @@ function P1Vergelijking() {
               <span className="text-xs text-gray-400">{open[m.nr] ? "▼" : "▶"}</span>
               <span className="text-sm font-medium text-gray-200 capitalize">{m.label}</span>
             </div>
-            <div className="flex gap-4 text-xs">
-              <span>Import: <span className="text-red-400">{m.tot25imp.toFixed(1)}</span> → <span className="text-blue-400">{m.tot26imp.toFixed(1)}</span> kWh</span>
-              <span>Export: <span className="text-green-400">{m.tot25exp.toFixed(1)}</span> → <span className="text-purple-400">{m.tot26exp.toFixed(1)}</span> kWh</span>
+            <div className="flex items-center gap-6 text-sm">
+              <span className="text-gray-400">
+                Import: <span className="text-red-400">{m.tot25imp.toFixed(1)}</span> → <span className="text-green-400">{m.tot26imp.toFixed(1)}</span> kWh
+              </span>
+              <span className="text-gray-500 text-xs">
+                Export: {m.tot25exp.toFixed(1)} → {m.tot26exp.toFixed(1)} kWh
+              </span>
               {m.tot26imp > 0 && m.tot25imp > 0 && (
-                <span className={m.tot26imp < m.tot25imp ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                <span className={`font-bold text-base ${m.tot26imp < m.tot25imp ? 'text-green-400' : 'text-red-400'}`}>
                   {m.tot26imp < m.tot25imp ? "▼" : "▲"} {Math.abs(m.tot26imp - m.tot25imp).toFixed(1)} kWh
                 </span>
               )}
@@ -234,10 +237,10 @@ function P1Vergelijking() {
                   <tr className="border-b border-gray-700">
                     <th className="text-left py-2 text-gray-500 font-normal">Dag</th>
                     <th className="text-right py-2 text-red-400 font-normal">Import 2025</th>
-                    <th className="text-right py-2 text-blue-400 font-normal">Import 2026</th>
-                    <th className="text-right py-2 text-gray-500 font-normal">Verschil</th>
-                    <th className="text-right py-2 text-green-400 font-normal">Export 2025</th>
-                    <th className="text-right py-2 text-purple-400 font-normal">Export 2026</th>
+                    <th className="text-right py-2 text-green-400 font-normal">Import 2026</th>
+                    <th className="text-right py-2 text-gray-400 font-normal">Verschil</th>
+                    <th className="text-right py-2 text-gray-500 font-normal">Export 2025</th>
+                    <th className="text-right py-2 text-gray-400 font-normal">Export 2026</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -248,12 +251,12 @@ function P1Vergelijking() {
                       <tr key={dag} className="border-b border-gray-700">
                         <td className="py-1 text-gray-400">{dag}</td>
                         <td className="py-1 text-right text-red-400">{d25 ? d25.imp.toFixed(2) : "—"}</td>
-                        <td className="py-1 text-right text-blue-400">{d26 ? d26.imp.toFixed(2) : "—"}</td>
+                        <td className="py-1 text-right text-green-400">{d26 ? d26.imp.toFixed(2) : "—"}</td>
                         <td className={`py-1 text-right font-medium ${verschil < 0 ? 'text-green-400' : verschil > 0 ? 'text-red-400' : 'text-gray-500'}`}>
                           {verschil !== null ? (verschil > 0 ? "+" : "") + verschil : "—"}
                         </td>
-                        <td className="py-1 text-right text-green-400">{d25 ? d25.exp.toFixed(2) : "—"}</td>
-                        <td className="py-1 text-right text-purple-400">{d26 ? d26.exp.toFixed(2) : "—"}</td>
+                        <td className="py-1 text-right text-gray-500">{d25 ? d25.exp.toFixed(2) : "—"}</td>
+                        <td className="py-1 text-right text-gray-400">{d26 ? d26.exp.toFixed(2) : "—"}</td>
                       </tr>
                     );
                   })}
