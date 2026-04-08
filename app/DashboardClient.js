@@ -174,7 +174,7 @@ function OnbalansTegel() {
 
   async function fetchOnbalans() {
     try {
-      const res  = await fetch('/api/onbalans?secret=Nummer14!');
+      const res  = await fetch('/api/onbalans?secret=Nummer14!', { cache: 'no-store' });
       const json = await res.json();
       if (json.success) {
         setData(json);
