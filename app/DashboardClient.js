@@ -363,10 +363,6 @@ function OnbalansTegel() {
                   return `${label}  ${zoneLabel}`;
                 }}
               />
-              <ReferenceLine y={data.drempels?.ontladen} stroke="#ef4444" strokeDasharray="5 3" strokeOpacity={0.6}
-                label={{ value: `€${data.drempels?.ontladen?.toFixed(3)}`, fill: '#ef4444', fontSize: 9, position: 'insideTopRight' }} />
-              <ReferenceLine y={data.drempels?.laden} stroke="#22c55e" strokeDasharray="5 3" strokeOpacity={0.6}
-                label={{ value: `€${data.drempels?.laden?.toFixed(3)}`, fill: '#22c55e', fontSize: 9, position: 'insideBottomRight' }} />
               {data.huidigeTijd && (
                 <ReferenceLine x={data.huidigeTijd} stroke="#F59E0B" strokeWidth={2}
                   label={{ value: 'nu', fill: '#F59E0B', fontSize: 10, position: 'insideTopLeft' }} />
