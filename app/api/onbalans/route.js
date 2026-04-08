@@ -55,6 +55,7 @@ export async function GET(request) {
 
     // 2. Haal batterijpercentage op via Victron stats API
     let batterijPct = null;
+    let batDebug = null;
     try {
       const nu2    = new Date();
       const start  = Math.floor(new Date(nu2.getTime() - 15 * 60000).getTime() / 1000);
@@ -65,12 +66,10 @@ export async function GET(request) {
       );
       const batData = await batRes.json();
       const records = batData?.records || {};
-      // SOC staat in Bs (Battery State of Charge)
-      const socArr = records?.Bs || records?.soc || [];
-      if (socArr.length > 0) {
-        batterijPct = socArr[socArr.length - 1][1];
-      }
-    } catch {}
+      batDebug = Object.keys(records).slice(0, 20); // toon beschikbare velden
+      const socArr = records?.Bs || records?.soc || records?.SOC || [];
+      if (socArr.length > 0) batterijPct = socArr[socArr.length - 1][1];
+    } catch (e) { batDebug = e.message; }
 
     // 3. Bepaal beslissing
     const { beslissing, reden } = huidigePrijs !== null
@@ -95,6 +94,7 @@ export async function GET(request) {
       tijdstip:     nu.toISOString(),
       prijs:        huidigePrijs,
       batterijPct,
+      batDebug,
       beslissing,
       reden,
       drempels: {
