@@ -138,19 +138,16 @@ function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempe
   if (consumerPrijs >= ontlaadDrempel && (batterijPct === null || batterijPct > BAT_MIN_PCT)) {
     return { beslissing: 'ontladen', reden: `Prijs hoog (€${consumerPrijs.toFixed(4)} ≥ €${ontlaadDrempel.toFixed(4)})` };
   }
+  // Zon produceert actief → dat IS laden (van zon, niet van net)
+  if (solarW !== null && solarW > GROEN_MIN_SOLAR_W && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    return { beslissing: 'laden', reden: `Zon laadt batterij (${(solarW/1000).toFixed(1)} kW productie)` };
+  }
   if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    // Zon produceert nu al → niet kopen van net
-    if (solarW !== null && solarW > GROEN_MIN_SOLAR_W) {
-      return { beslissing: 'wachten', reden: `Zon produceert ${solarW}W — laden van net niet nodig` };
-    }
     // Zon vult batterij vandaag nog → niet kopen van net
     if (zonResterendKwh !== null && batterijPct !== null) {
       const ruimteKwh = BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - batterijPct) / 100;
       if (zonResterendKwh >= ruimteKwh * 0.8) {
-        return {
-          beslissing: 'wachten',
-          reden: `Zon vult batterij (${zonResterendKwh.toFixed(1)} kWh verwacht, ${ruimteKwh.toFixed(1)} kWh ruimte)`,
-        };
+        return { beslissing: 'laden', reden: `Zon vult batterij vandaag (${zonResterendKwh.toFixed(1)} kWh verwacht)` };
       }
     }
     return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)} ≤ €${laadDrempel.toFixed(4)})` };
@@ -176,18 +173,15 @@ function bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, ontlaadD
       : `nog ${zonResterendKwh.toFixed(1)} kWh zon vandaag`;
     return { beslissing: 'ontladen', reden: `Groen surplus: ${batterijPct}% vol, hoge prijs · ${zonReden}` };
   }
-  // Zon produceert nu al → wachten, laat zon het doen
-  if (solarW !== null && solarW > GROEN_MIN_SOLAR_W) {
-    return { beslissing: 'wachten', reden: `Zon produceert ${solarW}W — geen netladen nodig` };
+  // Zon produceert actief → dat IS laden (van zon)
+  if (solarW !== null && solarW > GROEN_MIN_SOLAR_W && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    return { beslissing: 'laden', reden: `Zon laadt batterij (${(solarW/1000).toFixed(1)} kW productie)` };
   }
-  // Zon vult batterij vandaag nog → niet van net laden
+  // Zon vult batterij vandaag nog → laden (van zon)
   if (zonResterendKwh !== null && batterijPct !== null) {
     const ruimteKwh = BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - batterijPct) / 100;
     if (zonResterendKwh >= ruimteKwh * 0.8) {
-      return {
-        beslissing: 'wachten',
-        reden: `Zon vult batterij (${zonResterendKwh.toFixed(1)} kWh verwacht, ${ruimteKwh.toFixed(1)} kWh ruimte)`,
-      };
+      return { beslissing: 'laden', reden: `Zon vult batterij vandaag (${zonResterendKwh.toFixed(1)} kWh verwacht)` };
     }
   }
   // Goedkoop + batterij heeft ruimte + geen zon op komst → laden van net
