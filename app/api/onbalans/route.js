@@ -121,19 +121,19 @@ async function haalZonnePrognose(nu) {
       }
       if (isMorgen) morgenKwh += kwh;
 
-      // Grafiek: lokale Amsterdam tijd (UTC+2 in april)
-      if (isVandaag || isMorgen) {
+      // Grafiek: alleen toekomstige periodes (verleden komt uit estimated_actuals)
+      if ((isVandaag || isMorgen) && beginUtc >= nu) {
         const lokaalBegin = new Date(beginUtc.getTime() + 2 * 3600000);
         const tijdLabel   = lokaalBegin.toISOString().slice(11, 16);
         const key         = (isVandaag ? 'vandaag' : 'morgen') + '_' + tijdLabel;
         if (!uurData[key]) {
           uurData[key] = { tijd: tijdLabel, watt: 0, dag: isVandaag ? 'vandaag' : 'morgen' };
         }
-        uurData[key].watt += watt / 2; // gemiddeld over twee 30-min slots per uur
+        uurData[key].watt += watt / 2;
       }
     }
 
-    // Verleden uren vandaag toevoegen vanuit estimated_actuals
+    // Verleden uren vandaag uit estimated_actuals (alleen periodes vóór nu)
     let vandaagGeproduceerdKwh = 0;
     for (const p of actualsPerides) {
       const eindUtc  = new Date(p.period_end);
@@ -145,13 +145,16 @@ async function haalZonnePrognose(nu) {
       const watt = (p.pv_estimate ?? 0) * 1000;
       vandaagGeproduceerdKwh += kwh;
 
-      const lokaalBegin = new Date(beginUtc.getTime() + 2 * 3600000);
-      const tijdLabel   = lokaalBegin.toISOString().slice(11, 16);
-      const key         = 'vandaag_' + tijdLabel;
-      if (!uurData[key]) {
-        uurData[key] = { tijd: tijdLabel, watt: 0, dag: 'vandaag' };
+      // Alleen verleden in grafiek zetten
+      if (beginUtc < nu) {
+        const lokaalBegin = new Date(beginUtc.getTime() + 2 * 3600000);
+        const tijdLabel   = lokaalBegin.toISOString().slice(11, 16);
+        const key         = 'vandaag_' + tijdLabel;
+        if (!uurData[key]) {
+          uurData[key] = { tijd: tijdLabel, watt: 0, dag: 'vandaag' };
+        }
+        uurData[key].watt += watt / 2;
       }
-      uurData[key].watt += watt / 2;
     }
 
     const vandaagTotaalKwh = vandaagGeproduceerdKwh + vandaagKwh;
