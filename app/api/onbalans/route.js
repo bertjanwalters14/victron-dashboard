@@ -27,7 +27,7 @@ async function haalFrankEnergiePrijzen(vandaag) {
   morgen.setUTCDate(morgen.getUTCDate() + 1);
   const morgenStr = morgen.toISOString().split('T')[0];
 
-  const res = await fetch('https://graphcdn.frankenergie.nl/', {
+  const res = await fetch('https://frank-graphql-prod.graphcdn.app/', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -44,6 +44,7 @@ async function haalFrankEnergiePrijzen(vandaag) {
 
   if (!res.ok) throw new Error(`Frank Energie API fout: ${res.status}`);
   const json = await res.json();
+  if (json.errors) throw new Error(`Frank Energie GraphQL fout: ${json.errors[0]?.message}`);
   return json.data?.marketPricesElectricity || [];
 }
 
@@ -119,8 +120,23 @@ export async function GET(request) {
     const nu      = new Date();
     const vandaag = nu.toISOString().split('T')[0];
 
-    // 1. Uurprijzen ophalen via Frank Energie (marketPrice = spot, priceIncludingMarkup = ex BTW)
-    const frankPrijzen = await haalFrankEnergiePrijzen(vandaag);
+    // 1. Uurprijzen ophalen via Frank Energie, fallback naar EnergyZero
+    let frankPrijzen = [];
+    let prijsBron = 'frank';
+    try {
+      frankPrijzen = await haalFrankEnergiePrijzen(vandaag);
+    } catch (e) {
+      console.error('Frank Energie mislukt, fallback naar EnergyZero:', e.message);
+      prijsBron = 'energyzero';
+      const ezRes  = await fetch(`https://api.energyzero.nl/v1/energyprices?fromDate=${vandaag}T00:00:00.000Z&tillDate=${vandaag}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`);
+      const ezData = await ezRes.json();
+      frankPrijzen = (ezData?.Prices || []).map(p => ({
+        from:                p.readingDate,
+        till:                new Date(new Date(p.readingDate).getTime() + 3600000).toISOString(),
+        marketPrice:         p.price,
+        priceIncludingMarkup: (p.price + 0.03 + 0.13),
+      }));
+    }
     const huidigUur    = frankPrijzen.find(p => {
       const van = new Date(p.from);
       const tot = new Date(p.till);
@@ -186,6 +202,7 @@ export async function GET(request) {
 
     return Response.json({
       success:     true,
+      prijsBron,
       tijdstip:    nu.toISOString(),
       prijs:       consumerPrijs,
       spotprijs:   spotPrijs,
