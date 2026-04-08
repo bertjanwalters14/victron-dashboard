@@ -254,10 +254,12 @@ function OnbalansTegel() {
       {/* ── Live energieflow ── */}
       <div>
         <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Live energieflow</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <FlowCard icon="☀️" label="Zon"     value={wattLabel(data?.solarW)}   sub="productie"                         kleur="text-amber-400" />
-          <FlowCard icon="🏠" label="Huis"    value={wattLabel(data?.verbruikW)} sub="verbruik"                          kleur="text-white" />
-          <FlowCard icon="🔌" label="Net"     value={wattLabel(data?.gridW)}     sub={gridImport ? 'import ↓' : 'export ↑'} kleur={gridImport ? 'text-red-400' : 'text-green-400'} />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <FlowCard icon="☀️" label="Zon"        value={wattLabel(data?.solarW)}    sub="productie"                            kleur="text-amber-400" />
+          <FlowCard icon="🏠" label="Huis totaal" value={wattLabel(data?.verbruikW)}  sub="verbruik"                             kleur="text-white" />
+          <FlowCard icon="⚡" label="Essentieel"  value={wattLabel(data?.essentieelW)} sub="warmtepomp e.d."                     kleur="text-orange-300"
+            badge={data?.essentieelW != null && data?.verbruikW ? `${Math.round(data.essentieelW / data.verbruikW * 100)}% v/h totaal` : null} />
+          <FlowCard icon="🔌" label="Net"         value={wattLabel(data?.gridW)}      sub={gridImport ? 'import ↓' : 'export ↑'} kleur={gridImport ? 'text-red-400' : 'text-green-400'} />
           <FlowCard
             icon="🔋" label="Batterij"
             value={data?.batterijPct != null ? `${data.batterijPct}%` : '—'}

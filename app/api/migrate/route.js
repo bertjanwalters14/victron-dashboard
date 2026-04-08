@@ -13,9 +13,9 @@ export async function GET(request) {
     await sql`ALTER TABLE onbalans_log ADD COLUMN IF NOT EXISTS grid_w     NUMERIC`;
     await sql`ALTER TABLE onbalans_log ADD COLUMN IF NOT EXISTS verbruik_w NUMERIC`;
 
-    // bron kolom: onderscheid Node-RED rijen van beslissings-rijen (robuuster dan solar_w IS NOT NULL)
     await sql`ALTER TABLE onbalans_log ADD COLUMN IF NOT EXISTS bron TEXT`;
     await sql`UPDATE onbalans_log SET bron = 'nodered' WHERE solar_w IS NOT NULL AND bron IS NULL`;
+    await sql`ALTER TABLE onbalans_log ADD COLUMN IF NOT EXISTS essentieel_w NUMERIC`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS instellingen (

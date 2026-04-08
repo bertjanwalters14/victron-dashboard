@@ -294,7 +294,7 @@ export async function GET(request) {
     let sensorRow;
     try {
       sensorRow = await sql`
-        SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
+        SELECT batterij_pct, solar_w, grid_w, verbruik_w, essentieel_w, tijdstip
         FROM onbalans_log
         WHERE bron = 'nodered'
         ORDER BY tijdstip DESC
@@ -310,11 +310,12 @@ export async function GET(request) {
       `;
     }
     const r            = sensorRow[0] ?? null;
-    const batterijPct  = r ? parseFloat(r.batterij_pct) : null;
-    const solarW       = r ? Math.round(parseFloat(r.solar_w))    : null;
-    const gridW        = r ? Math.round(parseFloat(r.grid_w))     : null;
-    const verbruikW    = r ? Math.round(parseFloat(r.verbruik_w)) : null;
-    const socTijdstip  = r ? r.tijdstip                           : null;
+    const batterijPct  = r ? parseFloat(r.batterij_pct)                                   : null;
+    const solarW       = r ? Math.round(parseFloat(r.solar_w))                             : null;
+    const gridW        = r ? Math.round(parseFloat(r.grid_w))                              : null;
+    const verbruikW    = r ? Math.round(parseFloat(r.verbruik_w))                          : null;
+    const essentieelW  = r?.essentieel_w != null ? Math.round(parseFloat(r.essentieel_w)) : null;
+    const socTijdstip  = r ? r.tijdstip                                                    : null;
 
     // 5. Beslissing bepalen (prijs + zonprognose + modus)
     const zonResterendKwh = zonPrognose?.vandaagResterendKwh ?? null;
@@ -378,6 +379,7 @@ export async function GET(request) {
       solarW,
       gridW,
       verbruikW,
+      essentieelW,
       socTijdstip: socTijdstip ? new Date(socTijdstip).toISOString() : null,
       beslissing,
       reden,
