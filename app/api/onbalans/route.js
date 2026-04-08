@@ -6,25 +6,34 @@ function getDb() {
   return neon(url);
 }
 
-const DREMPEL_ONTLADEN = 0.25;
-const DREMPEL_LADEN    = 0.05;
-const BAT_MIN_PCT      = 10;
-const BAT_MAX_PCT      = 90;
+const DREMPEL_ONTLADEN   = 0.25;  // EUR/kWh consumentenprijs
+const DREMPEL_LADEN      = 0.05;  // EUR/kWh consumentenprijs
+const BAT_MIN_PCT        = 10;
+const BAT_MAX_PCT        = 90;
 
-function bepaalBeslissing(epexPrijs, batterijPct, tennetShortage, tennetSurplus) {
+// Prijsformule: (spotprijs + leverancier + energiebelasting) × BTW
+const OPSLAG_LEVERANCIER = 0.03;
+const ENERGIEBELASTING   = 0.13;
+const BTW_FACTOR         = 1.21;
+
+function spotNaarConsumer(spot) {
+  return (spot + OPSLAG_LEVERANCIER + ENERGIEBELASTING) * BTW_FACTOR;
+}
+
+function bepaalBeslissing(consumerPrijs, batterijPct, tennetShortage, tennetSurplus) {
   if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
     return { beslissing: 'stop', reden: `Batterij te laag (${batterijPct}%)` };
   }
-  if (epexPrijs < 0) {
-    return { beslissing: 'laden', reden: `Negatieve EPEX prijs (€${epexPrijs.toFixed(4)}) — gratis stroom` };
+  if (consumerPrijs < 0) {
+    return { beslissing: 'laden', reden: `Negatieve consumentenprijs (€${consumerPrijs.toFixed(4)}) — gratis stroom` };
   }
-  if (epexPrijs > DREMPEL_ONTLADEN && (batterijPct === null || batterijPct > BAT_MIN_PCT)) {
-    return { beslissing: 'ontladen', reden: `EPEX prijs hoog (€${epexPrijs.toFixed(4)} > €${DREMPEL_ONTLADEN})` };
+  if (consumerPrijs > DREMPEL_ONTLADEN && (batterijPct === null || batterijPct > BAT_MIN_PCT)) {
+    return { beslissing: 'ontladen', reden: `Prijs hoog (€${consumerPrijs.toFixed(4)} > €${DREMPEL_ONTLADEN})` };
   }
-  if (epexPrijs < DREMPEL_LADEN && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    return { beslissing: 'laden', reden: `EPEX prijs laag (€${epexPrijs.toFixed(4)} < €${DREMPEL_LADEN})` };
+  if (consumerPrijs < DREMPEL_LADEN && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)} < €${DREMPEL_LADEN})` };
   }
-  return { beslissing: 'wachten', reden: `Prijs neutraal (€${epexPrijs.toFixed(4)})` };
+  return { beslissing: 'wachten', reden: `Prijs neutraal (€${consumerPrijs.toFixed(4)})` };
 }
 
 // TenneT geeft prijzen in EUR/MWh — omrekenen naar EUR/kWh
@@ -76,7 +85,8 @@ export async function GET(request) {
       const t = new Date(p.readingDate);
       return t <= nu && new Date(t.getTime() + 15 * 60000) > nu;
     }) || epexPrijzen[epexPrijzen.length - 1];
-    const epexPrijs = huidigKwartier ? huidigKwartier.price : null;
+    const spotPrijs     = huidigKwartier ? huidigKwartier.price : null;
+    const consumerPrijs = spotPrijs !== null ? spotNaarConsumer(spotPrijs) : null;
 
     // 2. TenneT onbalansprijzen ophalen (aanvullende info)
     const tennетData   = await haalTenneTData(nu);
@@ -98,27 +108,29 @@ export async function GET(request) {
     `;
     const batterijPct = socRow.length > 0 ? parseFloat(socRow[0].batterij_pct) : null;
 
-    // 4. Beslissing bepalen (primair op EPEX, TenneT beschikbaar voor toekomstige logica)
-    const { beslissing, reden } = epexPrijs !== null
-      ? bepaalBeslissing(epexPrijs, batterijPct, tennetShortage, tennetSurplus)
+    // 4. Beslissing bepalen op consumentenprijs (incl. BTW + opslag)
+    const { beslissing, reden } = consumerPrijs !== null
+      ? bepaalBeslissing(consumerPrijs, batterijPct, tennetShortage, tennetSurplus)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
 
-    // 5. Opslaan in database
+    // 5. Opslaan in database (consumer prijs)
     await sql`
       INSERT INTO onbalans_log (tijdstip, prijs_kwh, beslissing, batterij_pct)
-      VALUES (${nu.toISOString()}, ${epexPrijs}, ${beslissing}, ${batterijPct})
+      VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing}, ${batterijPct})
     `;
 
-    // 6. Alle EPEX prijzen van vandaag voor grafiek
+    // 6. Alle EPEX prijzen van vandaag voor grafiek (consumer prijs)
     const allePrijzen = epexPrijzen.map(p => ({
-      tijd:  new Date(p.readingDate).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-      prijs: +p.price.toFixed(4),
+      tijd:  new Date(p.readingDate).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
+      prijs: +spotNaarConsumer(p.price).toFixed(4),
+      spot:  +p.price.toFixed(4),
     }));
 
     return Response.json({
       success:     true,
       tijdstip:    nu.toISOString(),
-      prijs:       epexPrijs,
+      prijs:       consumerPrijs,   // incl. BTW + opslag
+      spotprijs:   spotPrijs,       // raw EPEX spot
       batterijPct,
       beslissing,
       reden,

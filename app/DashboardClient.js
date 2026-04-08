@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 
 const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-03');
@@ -155,6 +155,7 @@ export default function DashboardClient({ data }) {
 function OnbalansTegel() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [nu, setNu]           = useState('');
 
   async function fetchOnbalans() {
     try {
@@ -163,9 +164,10 @@ function OnbalansTegel() {
       if (json.success) setData(json);
     } catch(e) { console.error(e); }
     setLoading(false);
+    setNu(new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }));
   }
 
-  useState(() => {
+  useEffect(() => {
     fetchOnbalans();
     const iv = setInterval(fetchOnbalans, 60 * 1000);
     return () => clearInterval(iv);
@@ -200,9 +202,12 @@ function OnbalansTegel() {
           <p className="text-gray-400 text-xs mt-1">{data?.reden}</p>
         </div>
         <div className="text-right">
-          <p className="text-gray-400 text-xs mb-1">EPEX prijs</p>
+          <p className="text-gray-400 text-xs mb-1">Consumentenprijs</p>
           <p className="text-2xl font-bold text-white">
             {data?.prijs != null ? `€${data.prijs.toFixed(4)}` : '—'}
+          </p>
+          <p className="text-gray-500 text-xs">
+            EPEX spot: {data?.spotprijs != null ? `€${data.spotprijs.toFixed(4)}` : '—'}
           </p>
           <p className="text-gray-400 text-xs mt-1">
             Batterij: {data?.batterijPct != null ? `${data.batterijPct}%` : '—'}
@@ -228,17 +233,20 @@ function OnbalansTegel() {
       {/* Prijsgrafiek vandaag */}
       {data?.prijzenVandaag?.length > 0 && (
         <div>
-          <p className="text-xs text-gray-500 mb-2">Prijzen vandaag (EPEX)</p>
+          <p className="text-xs text-gray-500 mb-2">Prijzen vandaag (incl. BTW + opslag)</p>
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={data.prijzenVandaag}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="tijd" tick={{ fontSize: 9, fill: '#9CA3AF' }} interval={3} />
               <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} tickFormatter={v => `€${v.toFixed(2)}`} />
               <Tooltip
-                formatter={v => [`€${v.toFixed(4)}`, 'Prijs']}
+                formatter={(v, name) => [`€${v.toFixed(4)}`, name === 'prijs' ? 'Consumentenprijs' : 'EPEX spot']}
                 contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
                 labelStyle={{ color: '#9CA3AF' }}
               />
+              <ReferenceLine y={data.drempels?.ontladen ?? 0.25} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'ontladen', fill: '#10B981', fontSize: 8, position: 'insideTopRight' }} />
+              <ReferenceLine y={data.drempels?.laden ?? 0.05} stroke="#3B82F6" strokeDasharray="4 4" label={{ value: 'laden', fill: '#3B82F6', fontSize: 8, position: 'insideBottomRight' }} />
+              {nu && <ReferenceLine x={nu} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'nu', fill: '#F59E0B', fontSize: 8 }} />}
               <Line type="monotone" dataKey="prijs" stroke="#60A5FA" dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
@@ -255,7 +263,7 @@ function P1Vergelijking() {
   const [open, setOpen]       = useState({});
   const [loading, setLoading] = useState(true);
 
-  useState(() => {
+  useEffect(() => {
     async function load() {
       try {
         // P1 data (2025) en Victron data (2026) parallel ophalen
@@ -444,7 +452,7 @@ function LiveVandaag() {
     setLoading(false);
   }
 
-  useState(() => {
+  useEffect(() => {
     fetchLive();
     const iv = setInterval(fetchLive, 15 * 60 * 1000);
     return () => clearInterval(iv);
