@@ -90,11 +90,10 @@ export async function GET(request) {
     }));
 
     return Response.json({
-      success:      true,
-      tijdstip:     nu.toISOString(),
-      prijs:        huidigePrijs,
+      success:  true,
+      tijdstip: nu.toISOString(),
+      prijs:    huidigePrijs,
       batterijPct,
-      batDebug,
       beslissing,
       reden,
       drempels: {
