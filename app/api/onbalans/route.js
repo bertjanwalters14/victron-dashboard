@@ -84,14 +84,19 @@ async function haalZonnePrognose(nu) {
   }
 
   try {
-    // Solcast rooftop forecast — 48 periodes van 30 min (24 uur vooruit)
-    const res = await fetch(
-      `https://api.solcast.com.au/rooftop_sites/${resourceId}/forecasts?format=json&hours=48`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-    if (!res.ok) throw new Error(`Solcast HTTP ${res.status}`);
-    const data = await res.json();
-    const periodes = data.forecasts ?? [];
+    // Solcast: forecast (toekomst) + estimated_actuals (verleden vandaag) parallel ophalen
+    const [forecastRes, actualsRes] = await Promise.all([
+      fetch(`https://api.solcast.com.au/rooftop_sites/${resourceId}/forecasts?format=json&hours=48`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }),
+      fetch(`https://api.solcast.com.au/rooftop_sites/${resourceId}/estimated_actuals?format=json&hours=24`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }),
+    ]);
+    if (!forecastRes.ok) throw new Error(`Solcast forecast HTTP ${forecastRes.status}`);
+    const forecastData = await forecastRes.json();
+    const actualsData  = actualsRes.ok ? await actualsRes.json() : { estimated_actuals: [] };
+
+    const periodes       = forecastData.forecasts       ?? [];
+    const actualsPerides = actualsData.estimated_actuals ?? [];
 
     // Aggregeer per uur en per dag
     let vandaagKwh          = 0;
@@ -128,6 +133,29 @@ async function haalZonnePrognose(nu) {
       }
     }
 
+    // Verleden uren vandaag toevoegen vanuit estimated_actuals
+    let vandaagGeproduceerdKwh = 0;
+    for (const p of actualsPerides) {
+      const eindUtc  = new Date(p.period_end);
+      const beginUtc = new Date(eindUtc.getTime() - 30 * 60000);
+      const dagStr   = beginUtc.toISOString().split('T')[0];
+      if (dagStr !== vandaag) continue;
+
+      const kwh  = (p.pv_estimate ?? 0) * 0.5;
+      const watt = (p.pv_estimate ?? 0) * 1000;
+      vandaagGeproduceerdKwh += kwh;
+
+      const lokaalBegin = new Date(beginUtc.getTime() + 2 * 3600000);
+      const tijdLabel   = lokaalBegin.toISOString().slice(11, 16);
+      const key         = 'vandaag_' + tijdLabel;
+      if (!uurData[key]) {
+        uurData[key] = { tijd: tijdLabel, watt: 0, dag: 'vandaag' };
+      }
+      uurData[key].watt += watt / 2;
+    }
+
+    const vandaagTotaalKwh = vandaagGeproduceerdKwh + vandaagKwh;
+
     const grafiekData = Object.values(uurData).sort((a, b) => {
       const dagOrd = (d) => (d === 'vandaag' ? 0 : 1);
       if (dagOrd(a.dag) !== dagOrd(b.dag)) return dagOrd(a.dag) - dagOrd(b.dag);
@@ -135,7 +163,7 @@ async function haalZonnePrognose(nu) {
     });
 
     return {
-      vandaagKwh:          +vandaagKwh.toFixed(2),
+      vandaagKwh:          +vandaagTotaalKwh.toFixed(2),
       morgenKwh:           +morgenKwh.toFixed(2),
       vandaagResterendKwh: +vandaagResterendKwh.toFixed(2),
       grafiekData,
