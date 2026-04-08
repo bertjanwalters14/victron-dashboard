@@ -44,16 +44,20 @@ export async function GET(request) {
   try {
     const sql = getDb();
     const rows = await sql`
-      SELECT batterij_pct, tijdstip
+      SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
       FROM onbalans_log
       WHERE batterij_pct IS NOT NULL
       ORDER BY tijdstip DESC
       LIMIT 1
     `;
+    const r = rows[0];
     return Response.json({
-      success: true,
-      batterijPct: rows.length > 0 ? parseFloat(rows[0].batterij_pct) : null,
-      tijdstip:    rows.length > 0 ? rows[0].tijdstip : null,
+      success:    true,
+      batterijPct: r ? parseFloat(r.batterij_pct) : null,
+      solarW:      r?.solar_w    != null ? parseFloat(r.solar_w)    : null,
+      gridW:       r?.grid_w     != null ? parseFloat(r.grid_w)     : null,
+      verbruikW:   r?.verbruik_w != null ? parseFloat(r.verbruik_w) : null,
+      tijdstip:    r?.tijdstip   ?? null,
     });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
