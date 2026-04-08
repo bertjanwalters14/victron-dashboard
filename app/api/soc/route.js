@@ -17,10 +17,9 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const batterijPct = parseFloat(body.batterij_pct);
-    const solarW      = body.solar_w      != null ? parseFloat(body.solar_w)      : null;
-    const gridW       = body.grid_w       != null ? parseFloat(body.grid_w)       : null;
-    const verbruikW   = body.verbruik_w   != null ? parseFloat(body.verbruik_w)   : null;
-    const essentieelW = body.essentieel_w != null ? parseFloat(body.essentieel_w) : null;
+    const solarW    = body.solar_w    != null ? parseFloat(body.solar_w)    : null;
+    const gridW     = body.grid_w     != null ? parseFloat(body.grid_w)     : null;
+    const verbruikW = body.verbruik_w != null ? parseFloat(body.verbruik_w) : null;
 
     if (isNaN(batterijPct)) {
       return Response.json({ error: 'batterij_pct is geen geldig getal' }, { status: 400 });
@@ -28,11 +27,11 @@ export async function POST(request) {
 
     const sql = getDb();
     await sql`
-      INSERT INTO onbalans_log (tijdstip, batterij_pct, solar_w, grid_w, verbruik_w, essentieel_w, bron)
-      VALUES (NOW(), ${batterijPct}, ${solarW}, ${gridW}, ${verbruikW}, ${essentieelW}, 'nodered')
+      INSERT INTO onbalans_log (tijdstip, batterij_pct, solar_w, grid_w, verbruik_w, bron)
+      VALUES (NOW(), ${batterijPct}, ${solarW}, ${gridW}, ${verbruikW}, 'nodered')
     `;
 
-    return Response.json({ success: true, batterijPct, solarW, gridW, verbruikW, essentieelW, ontvangen: new Date().toISOString() });
+    return Response.json({ success: true, batterijPct, solarW, gridW, verbruikW, ontvangen: new Date().toISOString() });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
@@ -47,7 +46,7 @@ export async function GET(request) {
   try {
     const sql = getDb();
     const rows = await sql`
-      SELECT batterij_pct, solar_w, grid_w, verbruik_w, essentieel_w, tijdstip
+      SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
       FROM onbalans_log
       WHERE bron = 'nodered'
       ORDER BY tijdstip DESC
@@ -59,9 +58,8 @@ export async function GET(request) {
       batterijPct: r ? parseFloat(r.batterij_pct) : null,
       solarW:      r?.solar_w    != null ? parseFloat(r.solar_w)    : null,
       gridW:       r?.grid_w     != null ? parseFloat(r.grid_w)     : null,
-      verbruikW:    r?.verbruik_w   != null ? parseFloat(r.verbruik_w)   : null,
-      essentieelW:  r?.essentieel_w != null ? parseFloat(r.essentieel_w) : null,
-      tijdstip:     r?.tijdstip     ?? null,
+      verbruikW: r?.verbruik_w != null ? parseFloat(r.verbruik_w) : null,
+      tijdstip:  r?.tijdstip  ?? null,
     });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
