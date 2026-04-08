@@ -6,11 +6,10 @@ function getDb() {
   return neon(url);
 }
 
-// Drempelwaarden — later instelbaar via dashboard
-const DREMPEL_ONTLADEN = 0.25;  // €/kWh → ontladen als prijs hoger
-const DREMPEL_LADEN    = 0.05;  // €/kWh → laden als prijs lager
-const BAT_MIN_PCT      = 10;    // % → altijd stoppen onder dit niveau
-const BAT_MAX_PCT      = 90;    // % → niet meer laden boven dit niveau
+const DREMPEL_ONTLADEN = 0.25;
+const DREMPEL_LADEN    = 0.05;
+const BAT_MIN_PCT      = 10;
+const BAT_MAX_PCT      = 90;
 
 function bepaalBeslissing(prijs, batterijPct) {
   if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
@@ -28,7 +27,6 @@ function bepaalBeslissing(prijs, batterijPct) {
   return { beslissing: 'wachten', reden: `Prijs neutraal (€${prijs.toFixed(4)})` };
 }
 
-// GET — haal huidige prijs + beslissing op
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get('secret') !== process.env.CRON_SECRET) {
@@ -36,63 +34,51 @@ export async function GET(request) {
   }
 
   try {
-    // 1. Haal huidige EPEX kwartierprijs op via EnergyZero
     const nu      = new Date();
     const vandaag = nu.toISOString().split('T')[0];
+
+    // 1. EPEX kwartierprijs ophalen
     const prijsRes = await fetch(
       `https://api.energyzero.nl/v1/energyprices?fromDate=${vandaag}T00:00:00.000Z&tillDate=${vandaag}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
     );
-    const prijsData = await prijsRes.json();
-    const prijzen   = prijsData?.Prices || [];
-
-    // Zoek huidige kwartierprijs
+    const prijsData  = await prijsRes.json();
+    const prijzen    = prijsData?.Prices || [];
     const huidigKwartier = prijzen.find(p => {
       const t = new Date(p.readingDate);
       return t <= nu && new Date(t.getTime() + 15 * 60000) > nu;
     }) || prijzen[prijzen.length - 1];
-
     const huidigePrijs = huidigKwartier ? huidigKwartier.price : null;
 
-    // 2. Haal batterijpercentage op via Victron stats API
-    let batterijPct = null;
-    let batDebug = null;
-    try {
-      const nu2    = new Date();
-      const start  = Math.floor(new Date(nu2.getTime() - 15 * 60000).getTime() / 1000);
-      const end    = Math.floor(nu2.getTime() / 1000);
-      const batRes = await fetch(
-        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/stats?type=live&start=${start}&end=${end}`,
-        { headers: { 'x-authorization': `Token ${process.env.VICTRON_API_TOKEN}` } }
-      );
-      const batData = await batRes.json();
-      const records = batData?.records || {};
-      batDebug = Object.keys(records).slice(0, 20); // toon beschikbare velden
-      const socArr = records?.Bs || records?.soc || records?.SOC || [];
-      if (socArr.length > 0) batterijPct = socArr[socArr.length - 1][1];
-    } catch (e) { batDebug = e.message; }
+    // 2. SOC ophalen uit database (gestuurd door Node-RED)
+    const sql = getDb();
+    const socRow = await sql`
+      SELECT batterij_pct FROM onbalans_log
+      WHERE batterij_pct IS NOT NULL
+      ORDER BY tijdstip DESC LIMIT 1
+    `;
+    const batterijPct = socRow.length > 0 ? parseFloat(socRow[0].batterij_pct) : null;
 
-    // 3. Bepaal beslissing
+    // 3. Beslissing bepalen
     const { beslissing, reden } = huidigePrijs !== null
       ? bepaalBeslissing(huidigePrijs, batterijPct)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
 
-    // 4. Sla op in database
-    const sql = getDb();
+    // 4. Opslaan in database
     await sql`
       INSERT INTO onbalans_log (tijdstip, prijs_kwh, beslissing, batterij_pct)
       VALUES (${nu.toISOString()}, ${huidigePrijs}, ${beslissing}, ${batterijPct})
     `;
 
-    // 5. Haal alle prijzen van vandaag op voor grafiek
+    // 5. Alle prijzen van vandaag voor grafiek
     const allePrijzen = prijzen.map(p => ({
       tijd:  new Date(p.readingDate).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
       prijs: +p.price.toFixed(4),
     }));
 
     return Response.json({
-      success:  true,
-      tijdstip: nu.toISOString(),
-      prijs:    huidigePrijs,
+      success:        true,
+      tijdstip:       nu.toISOString(),
+      prijs:          huidigePrijs,
       batterijPct,
       beslissing,
       reden,
@@ -111,7 +97,6 @@ export async function GET(request) {
   }
 }
 
-// GET history — haal log op van afgelopen 24 uur
 export async function POST(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get('secret') !== process.env.CRON_SECRET) {
