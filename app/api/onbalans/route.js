@@ -75,8 +75,14 @@ async function haalTenneTData(nu) {
     `https://api.tennet.eu/publications/v1/settlement-prices?date_from=${encodeURIComponent(formatTenneTDatum(dagStart))}&date_to=${encodeURIComponent(formatTenneTDatum(nu))}`,
     { headers: { apikey: apiKey, Accept: 'application/json' } }
   );
-  if (!res.ok) return null; // bij fout gewoon doorgaan zonder TenneT
-  return res.json();
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(`TenneT API fout ${res.status}: ${body.slice(0, 300)}`);
+    return null;
+  }
+  const data = await res.json();
+  console.log('TenneT response keys:', Object.keys(data));
+  return data;
 }
 
 export async function GET(request) {
@@ -95,11 +101,12 @@ export async function GET(request) {
     );
     const prijsData      = await prijsRes.json();
     const epexPrijzen    = prijsData?.Prices || [];
-    const huidigKwartier = epexPrijzen.find(p => {
+    // EnergyZero geeft uurdata — zoek het uur dat het huidige moment bevat
+    const huidigUur = epexPrijzen.find(p => {
       const t = new Date(p.readingDate);
-      return t <= nu && new Date(t.getTime() + 15 * 60000) > nu;
+      return t <= nu && new Date(t.getTime() + 60 * 60000) > nu;
     }) || epexPrijzen[epexPrijzen.length - 1];
-    const spotPrijs     = huidigKwartier ? huidigKwartier.price : null;
+    const spotPrijs     = huidigUur ? huidigUur.price : null;
     const consumerPrijs = spotPrijs !== null ? spotNaarConsumer(spotPrijs) : null;
 
     // Dynamische drempels berekenen op basis van vandaag
@@ -145,8 +152,8 @@ export async function GET(request) {
     }));
 
     // Exacte tijd-label van het huidige kwartier (matcht altijd met grafiekdata)
-    const huidigeTijd = huidigKwartier
-      ? new Date(huidigKwartier.readingDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
+    const huidigeTijd = huidigUur
+      ? new Date(huidigUur.readingDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
       : null;
 
     return Response.json({
