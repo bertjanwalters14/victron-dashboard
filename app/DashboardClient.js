@@ -152,13 +152,19 @@ export default function DashboardClient({ data }) {
   );
 }
 
+function wattLabel(w) {
+  if (w == null) return '—';
+  const abs = Math.abs(w);
+  return abs >= 1000 ? `${(abs / 1000).toFixed(1)} kW` : `${abs} W`;
+}
+
 function OnbalansTegel() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
 
   async function fetchOnbalans() {
     try {
-      const res = await fetch('/api/onbalans?secret=Nummer14!');
+      const res  = await fetch('/api/onbalans?secret=Nummer14!');
       const json = await res.json();
       if (json.success) setData(json);
     } catch(e) { console.error(e); }
@@ -171,80 +177,107 @@ function OnbalansTegel() {
     return () => clearInterval(iv);
   }, []);
 
-  const kleur = data?.beslissing === 'ontladen' ? 'text-green-400'
-    : data?.beslissing === 'laden'    ? 'text-blue-400'
-    : data?.beslissing === 'stop'     ? 'text-red-400'
+  const beslissing = data?.beslissing;
+  const adviesKleur = beslissing === 'ontladen' ? 'text-green-400'
+    : beslissing === 'laden' ? 'text-blue-400'
+    : beslissing === 'stop'  ? 'text-red-400'
     : 'text-yellow-400';
-
-  const bgKleur = data?.beslissing === 'ontladen' ? 'from-green-900 to-emerald-800'
-    : data?.beslissing === 'laden'    ? 'from-blue-900 to-blue-800'
-    : data?.beslissing === 'stop'     ? 'from-red-900 to-red-800'
+  const bgKleur = beslissing === 'ontladen' ? 'from-green-900 to-emerald-800'
+    : beslissing === 'laden' ? 'from-blue-900 to-blue-800'
+    : beslissing === 'stop'  ? 'from-red-900 to-red-800'
     : 'from-gray-800 to-gray-700';
+  const emoji = beslissing === 'ontladen' ? '🟢'
+    : beslissing === 'laden' ? '🔵'
+    : beslissing === 'stop'  ? '🔴' : '🟡';
 
-  const emoji = data?.beslissing === 'ontladen' ? '🟢'
-    : data?.beslissing === 'laden'    ? '🔵'
-    : data?.beslissing === 'stop'     ? '🔴'
-    : '🟡';
+  // Batterij richting berekenen uit energiebalans
+  const battPower = (data?.solarW ?? 0) + (data?.gridW ?? 0) - (data?.verbruikW ?? 0);
+  const battRichting = battPower > 150 ? '↑ laden' : battPower < -150 ? '↓ ontladen' : '— standby';
+  const battKleur    = battPower > 150 ? 'text-green-400' : battPower < -150 ? 'text-orange-400' : 'text-gray-400';
+  const gridImport   = (data?.gridW ?? 0) >= 0;
 
   return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
       <h2 className="font-semibold text-gray-200 mb-4">⚡ Markt & Beslissing</h2>
 
-      {/* Hoofd tegel */}
-      <div className={`bg-gradient-to-r ${bgKleur} rounded-xl p-5 mb-4 flex justify-between items-center`}>
+      {/* Advies + prijs */}
+      <div className={`bg-gradient-to-r ${bgKleur} rounded-xl p-4 mb-4 flex justify-between items-center`}>
         <div>
-          <p className="text-gray-300 text-sm font-medium mb-1">Huidig advies (simulatie)</p>
-          <p className={`text-3xl font-bold ${kleur}`}>
-            {loading ? '...' : `${emoji} ${data?.beslissing?.toUpperCase()}`}
+          <p className="text-gray-300 text-xs font-medium mb-1">Huidig advies (simulatie)</p>
+          <p className={`text-3xl font-bold ${adviesKleur}`}>
+            {loading ? '...' : `${emoji} ${beslissing?.toUpperCase() ?? '—'}`}
           </p>
-          <p className="text-gray-400 text-xs mt-1">{data?.reden}</p>
+          <p className="text-gray-400 text-xs mt-1">{data?.reden ?? ''}</p>
         </div>
         <div className="text-right">
-          <p className="text-gray-400 text-xs mb-1">Consumentenprijs</p>
-          <p className="text-2xl font-bold text-white">
+          <p className="text-gray-400 text-xs">Consumentenprijs</p>
+          <p className="text-2xl font-bold text-white mt-0.5">
             {data?.prijs != null ? `€${data.prijs.toFixed(4)}` : '—'}
           </p>
-          <p className="text-gray-500 text-xs">
+          <p className="text-gray-500 text-xs mt-0.5">
             EPEX spot: {data?.spotprijs != null ? `€${data.spotprijs.toFixed(4)}` : '—'}
-          </p>
-          <p className="text-gray-400 text-xs mt-1">
-            Batterij: {data?.batterijPct != null ? `${data.batterijPct}%` : '—'}
           </p>
         </div>
       </div>
 
-      {/* Drempels — dagelijks dynamisch op basis van percentiel */}
+      {/* Live energieflow */}
       <div className="grid grid-cols-4 gap-3 mb-4">
-        {[
-          { l: `Ontladen boven (p${data?.drempels?.percentiel?.ontladen ?? 75})`, v: data?.drempels?.ontladen != null ? `€${data.drempels.ontladen.toFixed(4)}` : '—', c: 'text-green-400' },
-          { l: `Laden onder (p${data?.drempels?.percentiel?.laden ?? 25})`,       v: data?.drempels?.laden    != null ? `€${data.drempels.laden.toFixed(4)}`    : '—', c: 'text-blue-400' },
-          { l: 'Bat. minimum',   v: `${data?.drempels?.batMin ?? 10}%`,     c: 'text-red-400' },
-          { l: 'Bat. maximum',   v: `${data?.drempels?.batMax ?? 90}%`,     c: 'text-yellow-400' },
-        ].map(d => (
-          <div key={d.l} className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-gray-500 text-xs mb-1">{d.l}</p>
-            <p className={`text-lg font-bold ${d.c}`}>{d.v}</p>
-          </div>
-        ))}
+        <div className="bg-gray-700 rounded-lg p-3 text-center">
+          <p className="text-gray-500 text-xs mb-1">☀️ Zon</p>
+          <p className="text-lg font-bold text-amber-400">{wattLabel(data?.solarW)}</p>
+          <p className="text-gray-600 text-xs mt-0.5">productie</p>
+        </div>
+        <div className="bg-gray-700 rounded-lg p-3 text-center">
+          <p className="text-gray-500 text-xs mb-1">🏠 Huis</p>
+          <p className="text-lg font-bold text-white">{wattLabel(data?.verbruikW)}</p>
+          <p className="text-gray-600 text-xs mt-0.5">verbruik</p>
+        </div>
+        <div className="bg-gray-700 rounded-lg p-3 text-center">
+          <p className="text-gray-500 text-xs mb-1">⚡ Net</p>
+          <p className={`text-lg font-bold ${gridImport ? 'text-red-400' : 'text-green-400'}`}>
+            {wattLabel(data?.gridW)}
+          </p>
+          <p className="text-gray-600 text-xs mt-0.5">{gridImport ? 'import' : 'export'}</p>
+        </div>
+        <div className="bg-gray-700 rounded-lg p-3 text-center">
+          <p className="text-gray-500 text-xs mb-1">🔋 Batterij</p>
+          <p className={`text-lg font-bold ${battKleur}`}>
+            {data?.batterijPct != null ? `${data.batterijPct}%` : '—'}
+          </p>
+          <p className="text-gray-600 text-xs mt-0.5">{battRichting}</p>
+        </div>
       </div>
 
-      {/* TenneT onbalansprijzen */}
+      {/* Drempels compact */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-4 px-1">
+        <span>Ontladen boven <span className="text-green-400 font-medium">
+          {data?.drempels?.ontladen != null ? `€${data.drempels.ontladen.toFixed(4)}` : '—'}
+        </span> (p{data?.drempels?.percentiel?.ontladen ?? 75})</span>
+        <span>·</span>
+        <span>Laden onder <span className="text-blue-400 font-medium">
+          {data?.drempels?.laden != null ? `€${data.drempels.laden.toFixed(4)}` : '—'}
+        </span> (p{data?.drempels?.percentiel?.laden ?? 25})</span>
+        <span>·</span>
+        <span>Bat <span className="text-red-400 font-medium">{data?.drempels?.batMin ?? 10}%</span>–<span className="text-yellow-400 font-medium">{data?.drempels?.batMax ?? 90}%</span></span>
+      </div>
+
+      {/* TenneT */}
       {data?.tennet && (
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="bg-gray-700 rounded-lg p-3 text-center">
             <p className="text-gray-500 text-xs mb-1">TenneT shortage</p>
             <p className="text-lg font-bold text-orange-400">€{data.tennet.shortage.toFixed(4)}</p>
-            <p className="text-gray-600 text-xs">grid tekort → verkoop prijs</p>
+            <p className="text-gray-600 text-xs">grid tekort → verkoopprijs</p>
           </div>
           <div className="bg-gray-700 rounded-lg p-3 text-center">
             <p className="text-gray-500 text-xs mb-1">TenneT surplus</p>
             <p className="text-lg font-bold text-cyan-400">€{data.tennet.surplus.toFixed(4)}</p>
-            <p className="text-gray-600 text-xs">grid overschot → inkoop prijs</p>
+            <p className="text-gray-600 text-xs">grid overschot → inkoopprijs</p>
           </div>
         </div>
       )}
 
-      {/* Prijsgrafiek vandaag */}
+      {/* Prijsgrafiek */}
       {data?.prijzenVandaag?.length > 0 && (
         <div>
           <p className="text-xs text-gray-500 mb-2">Prijzen vandaag (incl. BTW + opslag)</p>
@@ -256,17 +289,17 @@ function OnbalansTegel() {
                 tick={{ fontSize: 9, fill: '#9CA3AF' }}
                 tickFormatter={v => `€${v.toFixed(2)}`}
                 domain={[
-                  dataMin => Math.min(dataMin, data.drempels?.laden ?? 0.05) - 0.02,
+                  dataMin => Math.min(dataMin, data.drempels?.laden  ?? 0.05) - 0.02,
                   dataMax => Math.max(dataMax, data.drempels?.ontladen ?? 0.25) + 0.02,
                 ]}
               />
               <Tooltip
-                formatter={(v, name) => [`€${v.toFixed(4)}`, name === 'prijs' ? 'Consumentenprijs' : 'EPEX spot']}
+                formatter={v => [`€${v.toFixed(4)}`, 'Consumentenprijs']}
                 contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
                 labelStyle={{ color: '#9CA3AF' }}
               />
-              <ReferenceLine y={data.drempels?.ontladen ?? 0.25} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'ontladen', fill: '#10B981', fontSize: 8, position: 'insideTopRight' }} />
-              <ReferenceLine y={data.drempels?.laden ?? 0.05} stroke="#3B82F6" strokeDasharray="4 4" label={{ value: 'laden', fill: '#3B82F6', fontSize: 8, position: 'insideBottomRight' }} />
+              <ReferenceLine y={data.drempels?.ontladen} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'ontladen', fill: '#10B981', fontSize: 8, position: 'insideTopRight' }} />
+              <ReferenceLine y={data.drempels?.laden}    stroke="#3B82F6" strokeDasharray="4 4" label={{ value: 'laden',    fill: '#3B82F6', fontSize: 8, position: 'insideBottomRight' }} />
               {data.huidigeTijd && (
                 <ReferenceLine x={data.huidigeTijd} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'nu', fill: '#F59E0B', fontSize: 8 }} />
               )}

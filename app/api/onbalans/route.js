@@ -124,14 +124,18 @@ export async function GET(request) {
     const tennetShortage = huidigTennet ? mwhNaarKwh(parseFloat(huidigTennet.shortage)) : null;
     const tennetSurplus  = huidigTennet ? mwhNaarKwh(parseFloat(huidigTennet.surplus))  : null;
 
-    // 3. SOC ophalen uit database (gestuurd door Node-RED)
+    // 3. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
     const sql = getDb();
     const socRow = await sql`
-      SELECT batterij_pct FROM onbalans_log
+      SELECT batterij_pct, solar_w, grid_w, verbruik_w
+      FROM onbalans_log
       WHERE batterij_pct IS NOT NULL
       ORDER BY tijdstip DESC LIMIT 1
     `;
-    const batterijPct = socRow.length > 0 ? parseFloat(socRow[0].batterij_pct) : null;
+    const batterijPct = socRow.length > 0 ? parseFloat(socRow[0].batterij_pct)  : null;
+    const solarW      = socRow.length > 0 && socRow[0].solar_w    != null ? Math.round(parseFloat(socRow[0].solar_w))    : null;
+    const gridW       = socRow.length > 0 && socRow[0].grid_w     != null ? Math.round(parseFloat(socRow[0].grid_w))     : null;
+    const verbruikW   = socRow.length > 0 && socRow[0].verbruik_w != null ? Math.round(parseFloat(socRow[0].verbruik_w)) : null;
 
     // 4. Beslissing bepalen op basis van dagelijkse dynamische drempels
     const { beslissing, reden } = consumerPrijs !== null
@@ -163,6 +167,9 @@ export async function GET(request) {
       spotprijs:   spotPrijs,
       huidigeTijd,
       batterijPct,
+      solarW,
+      gridW,
+      verbruikW,
       beslissing,
       reden,
       tennet: tennetShortage !== null ? {
