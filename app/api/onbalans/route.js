@@ -53,29 +53,24 @@ export async function GET(request) {
 
     const huidigePrijs = huidigKwartier ? huidigKwartier.price : null;
 
-    // 2. Haal batterijpercentage op via Victron diagnostics
+    // 2. Haal batterijpercentage op via Victron stats API
     let batterijPct = null;
-    let batDebug = null;
     try {
+      const nu2    = new Date();
+      const start  = Math.floor(new Date(nu2.getTime() - 15 * 60000).getTime() / 1000);
+      const end    = Math.floor(nu2.getTime() / 1000);
       const batRes = await fetch(
-        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/diagnostics?count=100`,
+        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/stats?type=live&start=${start}&end=${end}`,
         { headers: { 'x-authorization': `Token ${process.env.VICTRON_API_TOKEN}` } }
       );
       const batData = await batRes.json();
-      const records = batData?.records || [];
-      // Debug — laat alle records zien
-      batDebug = records.slice(0, 20).map(r => ({
-        id: r.idDataAttribute,
-        desc: r.description,
-        val: r.formattedValue,
-      }));
-      const socRecord = records.find(r =>
-        r.description?.toLowerCase().includes('state of charge') ||
-        r.description?.toLowerCase().includes('soc') ||
-        r.idDataAttribute === 168
-      );
-      if (socRecord) batterijPct = parseFloat(socRecord.rawValue ?? socRecord.formattedValue);
-    } catch (e) { batDebug = e.message; }
+      const records = batData?.records || {};
+      // SOC staat in Bs (Battery State of Charge)
+      const socArr = records?.Bs || records?.soc || [];
+      if (socArr.length > 0) {
+        batterijPct = socArr[socArr.length - 1][1];
+      }
+    } catch {}
 
     // 3. Bepaal beslissing
     const { beslissing, reden } = huidigePrijs !== null
@@ -100,7 +95,6 @@ export async function GET(request) {
       tijdstip:     nu.toISOString(),
       prijs:        huidigePrijs,
       batterijPct,
-      batDebug,
       beslissing,
       reden,
       drempels: {
