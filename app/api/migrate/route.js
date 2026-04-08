@@ -31,6 +31,20 @@ export async function GET(request) {
       ON CONFLICT (sleutel) DO NOTHING
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS vrm_dag_stats (
+        dag               DATE PRIMARY KEY,
+        kwh_zon           NUMERIC,
+        kwh_geladen       NUMERIC,
+        kwh_geladen_zon   NUMERIC,
+        kwh_geladen_net   NUMERIC,
+        kwh_ontladen      NUMERIC,
+        kwh_van_net       NUMERIC,
+        kwh_teruggeleverd NUMERIC,
+        bijgewerkt        TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+
     return Response.json({
       success: true,
       bericht: 'Migraties klaar: solar_w/grid_w/verbruik_w/essentieel_w/bat_w/bron kolommen + instellingen tabel aangemaakt',
