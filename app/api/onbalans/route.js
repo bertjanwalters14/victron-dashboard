@@ -296,12 +296,11 @@ export async function GET(request) {
     // 4. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
     // SOC en sensor data apart opvragen: onbalans INSERT heeft geen solar/grid/verbruik
     const sql = getDb();
-    // Node-RED rijen hebben altijd solar_w IS NOT NULL — zo onderscheiden we ze van
-    // de beslissings-INSERT (die heeft alleen prijs_kwh/beslissing, geen sensordata).
+    // bron = 'nodered' markeert rijen van Node-RED (robuust, werkt ook als solar_w null is)
     const sensorRow = await sql`
       SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
       FROM onbalans_log
-      WHERE solar_w IS NOT NULL
+      WHERE bron = 'nodered'
       ORDER BY tijdstip DESC
       LIMIT 1
     `;

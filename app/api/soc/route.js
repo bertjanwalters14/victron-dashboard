@@ -1,5 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 
+export const dynamic = 'force-dynamic';
+
 function getDb() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL niet ingesteld');
@@ -25,17 +27,17 @@ export async function POST(request) {
 
     const sql = getDb();
     await sql`
-      INSERT INTO onbalans_log (tijdstip, batterij_pct, solar_w, grid_w, verbruik_w)
-      VALUES (NOW(), ${batterijPct}, ${solarW}, ${gridW}, ${verbruikW})
+      INSERT INTO onbalans_log (tijdstip, batterij_pct, solar_w, grid_w, verbruik_w, bron)
+      VALUES (NOW(), ${batterijPct}, ${solarW}, ${gridW}, ${verbruikW}, 'nodered')
     `;
 
-    return Response.json({ success: true, batterijPct, solarW, gridW, verbruikW });
+    return Response.json({ success: true, batterijPct, solarW, gridW, verbruikW, ontvangen: new Date().toISOString() });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
 
-// GET — haal laatste SOC op
+// GET — haal laatste sensordata op (altijd Node-RED rijen via bron='nodered')
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get('secret') !== process.env.CRON_SECRET) {
@@ -46,13 +48,13 @@ export async function GET(request) {
     const rows = await sql`
       SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
       FROM onbalans_log
-      WHERE solar_w IS NOT NULL
+      WHERE bron = 'nodered'
       ORDER BY tijdstip DESC
       LIMIT 1
     `;
     const r = rows[0];
     return Response.json({
-      success:    true,
+      success:     true,
       batterijPct: r ? parseFloat(r.batterij_pct) : null,
       solarW:      r?.solar_w    != null ? parseFloat(r.solar_w)    : null,
       gridW:       r?.grid_w     != null ? parseFloat(r.grid_w)     : null,
