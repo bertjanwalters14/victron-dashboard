@@ -53,17 +53,29 @@ export async function GET(request) {
 
     const huidigePrijs = huidigKwartier ? huidigKwartier.price : null;
 
-    // 2. Haal batterijpercentage op via Victron API
+    // 2. Haal batterijpercentage op via Victron diagnostics
     let batterijPct = null;
+    let batDebug = null;
     try {
       const batRes = await fetch(
-        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/widgets/BatterySummary`,
+        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/diagnostics?count=100`,
         { headers: { 'x-authorization': `Token ${process.env.VICTRON_API_TOKEN}` } }
       );
       const batData = await batRes.json();
-      const soc = batData?.records?.voltage?.stateOfCharge;
-      if (soc !== undefined) batterijPct = parseFloat(soc);
-    } catch {}
+      const records = batData?.records || [];
+      // Debug — laat alle records zien
+      batDebug = records.slice(0, 20).map(r => ({
+        id: r.idDataAttribute,
+        desc: r.description,
+        val: r.formattedValue,
+      }));
+      const socRecord = records.find(r =>
+        r.description?.toLowerCase().includes('state of charge') ||
+        r.description?.toLowerCase().includes('soc') ||
+        r.idDataAttribute === 168
+      );
+      if (socRecord) batterijPct = parseFloat(socRecord.rawValue ?? socRecord.formattedValue);
+    } catch (e) { batDebug = e.message; }
 
     // 3. Bepaal beslissing
     const { beslissing, reden } = huidigePrijs !== null
@@ -88,6 +100,7 @@ export async function GET(request) {
       tijdstip:     nu.toISOString(),
       prijs:        huidigePrijs,
       batterijPct,
+      batDebug,
       beslissing,
       reden,
       drempels: {
