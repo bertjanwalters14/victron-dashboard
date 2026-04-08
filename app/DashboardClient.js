@@ -155,7 +155,6 @@ export default function DashboardClient({ data }) {
 function OnbalansTegel() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const [nu, setNu]           = useState('');
 
   async function fetchOnbalans() {
     try {
@@ -164,7 +163,6 @@ function OnbalansTegel() {
       if (json.success) setData(json);
     } catch(e) { console.error(e); }
     setLoading(false);
-    setNu(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }));
   }
 
   useEffect(() => {
@@ -269,13 +267,9 @@ function OnbalansTegel() {
               />
               <ReferenceLine y={data.drempels?.ontladen ?? 0.25} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'ontladen', fill: '#10B981', fontSize: 8, position: 'insideTopRight' }} />
               <ReferenceLine y={data.drempels?.laden ?? 0.05} stroke="#3B82F6" strokeDasharray="4 4" label={{ value: 'laden', fill: '#3B82F6', fontSize: 8, position: 'insideBottomRight' }} />
-              {nu && (() => {
-                // Afronden naar dichtstbijzijnde 15 min om te matchen met grafiekdata
-                const [h, m] = nu.split(':').map(Number);
-                const mm = Math.floor(m / 15) * 15;
-                const nuGerond = `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
-                return <ReferenceLine x={nuGerond} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'nu', fill: '#F59E0B', fontSize: 8 }} />;
-              })()}
+              {data.huidigeTijd && (
+                <ReferenceLine x={data.huidigeTijd} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'nu', fill: '#F59E0B', fontSize: 8 }} />
+              )}
               <Line type="monotone" dataKey="prijs" stroke="#60A5FA" dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>

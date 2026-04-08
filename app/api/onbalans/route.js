@@ -138,18 +138,23 @@ export async function GET(request) {
     `;
 
     // 6. Alle EPEX prijzen van vandaag voor grafiek (consumer prijs)
-    // 'en-GB' locale geeft altijd "HH:MM" formaat (geen punt-separator zoals nl-NL soms doet)
     const allePrijzen = epexPrijzen.map(p => ({
       tijd:  new Date(p.readingDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
       prijs: +spotNaarConsumer(p.price).toFixed(4),
       spot:  +p.price.toFixed(4),
     }));
 
+    // Exacte tijd-label van het huidige kwartier (matcht altijd met grafiekdata)
+    const huidigeTijd = huidigKwartier
+      ? new Date(huidigKwartier.readingDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
+      : null;
+
     return Response.json({
       success:     true,
       tijdstip:    nu.toISOString(),
-      prijs:       consumerPrijs,   // incl. BTW + opslag
-      spotprijs:   spotPrijs,       // raw EPEX spot
+      prijs:       consumerPrijs,
+      spotprijs:   spotPrijs,
+      huidigeTijd,
       batterijPct,
       beslissing,
       reden,
