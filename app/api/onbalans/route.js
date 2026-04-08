@@ -70,7 +70,7 @@ function berekenDrempels(consumerPrijzen) {
   return { laadDrempel, ontlaadDrempel };
 }
 
-async function haalZonnePrognose(nu) {
+async function haalZonnePrognose(nu, sql) {
   const vandaag   = nu.toISOString().split('T')[0];
   const morgen    = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate() + 1));
   const morgenStr = morgen.toISOString().split('T')[0];
@@ -82,6 +82,17 @@ async function haalZonnePrognose(nu) {
     console.error('Solcast env vars ontbreken');
     return null;
   }
+
+  // Cache: gebruik opgeslagen resultaat als het minder dan 1 uur oud is
+  try {
+    const cacheRij = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'solcast_cache'`;
+    if (cacheRij[0]) {
+      const ouderdom = (nu - new Date(cacheRij[0].bijgewerkt)) / 60000; // minuten
+      if (ouderdom < 60) {
+        return JSON.parse(cacheRij[0].waarde);
+      }
+    }
+  } catch { /* cache nog niet beschikbaar */ }
 
   try {
     // Solcast: forecast (toekomst) + estimated_actuals (verleden vandaag) parallel ophalen
@@ -165,14 +176,32 @@ async function haalZonnePrognose(nu) {
       return a.tijd.localeCompare(b.tijd);
     });
 
-    return {
+    const resultaat = {
       vandaagKwh:          +vandaagTotaalKwh.toFixed(2),
       morgenKwh:           +morgenKwh.toFixed(2),
       vandaagResterendKwh: +vandaagResterendKwh.toFixed(2),
       grafiekData,
     };
+
+    // Sla op in cache
+    try {
+      await sql`
+        INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
+        VALUES ('solcast_cache', ${JSON.stringify(resultaat)}, NOW())
+        ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
+      `;
+    } catch { /* cache opslaan mislukt, geen probleem */ }
+
+    return resultaat;
   } catch (e) {
     console.error('Solcast mislukt:', e.message);
+
+    // Fallback: gebruik cache ook als die ouder is dan 1 uur
+    try {
+      const cacheRij = await sql`SELECT waarde FROM instellingen WHERE sleutel = 'solcast_cache'`;
+      if (cacheRij[0]) return JSON.parse(cacheRij[0].waarde);
+    } catch { /* geen cache */ }
+
     return null;
   }
 }
@@ -303,6 +332,7 @@ export async function GET(request) {
   try {
     const nu      = new Date();
     const vandaag = nu.toISOString().split('T')[0];
+    const sql     = getDb();
 
     // 1. Uurprijzen ophalen via Frank Energie, fallback naar EnergyZero
     let frankPrijzen = [];
@@ -337,7 +367,7 @@ export async function GET(request) {
     // 2. Zonneprognose ophalen via Forecast.Solar (parallel met TenneT)
     const [tennетData, zonPrognose] = await Promise.all([
       haalTenneTData(nu),
-      haalZonnePrognose(nu),
+      haalZonnePrognose(nu, sql),
     ]);
     const tennетPoints  = tennетData?.TimeSeries?.[0]?.Period?.Points || [];
     const huidigTennet = tennетPoints.find(p => {
@@ -357,7 +387,6 @@ export async function GET(request) {
 
     // 4. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
     // SOC en sensor data apart opvragen: onbalans INSERT heeft geen solar/grid/verbruik
-    const sql = getDb();
     // bron = 'nodered' markeert rijen van Node-RED — fallback op solar_w als kolom nog niet bestaat
     let sensorRow;
     try {
