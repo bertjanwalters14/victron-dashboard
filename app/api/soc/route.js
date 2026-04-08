@@ -15,6 +15,9 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const batterijPct = parseFloat(body.batterij_pct);
+    const solarW      = body.solar_w    != null ? parseFloat(body.solar_w)    : null;
+    const gridW       = body.grid_w     != null ? parseFloat(body.grid_w)     : null;
+    const verbruikW   = body.verbruik_w != null ? parseFloat(body.verbruik_w) : null;
 
     if (isNaN(batterijPct)) {
       return Response.json({ error: 'batterij_pct is geen geldig getal' }, { status: 400 });
@@ -22,11 +25,11 @@ export async function POST(request) {
 
     const sql = getDb();
     await sql`
-      INSERT INTO onbalans_log (tijdstip, batterij_pct)
-      VALUES (NOW(), ${batterijPct})
+      INSERT INTO onbalans_log (tijdstip, batterij_pct, solar_w, grid_w, verbruik_w)
+      VALUES (NOW(), ${batterijPct}, ${solarW}, ${gridW}, ${verbruikW})
     `;
 
-    return Response.json({ success: true, batterijPct });
+    return Response.json({ success: true, batterijPct, solarW, gridW, verbruikW });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
