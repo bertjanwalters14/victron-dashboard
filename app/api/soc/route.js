@@ -46,7 +46,7 @@ export async function GET(request) {
     const rows = await sql`
       SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
       FROM onbalans_log
-      WHERE batterij_pct IS NOT NULL
+      WHERE solar_w IS NOT NULL
       ORDER BY tijdstip DESC
       LIMIT 1
     `;

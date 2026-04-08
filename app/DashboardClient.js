@@ -230,6 +230,18 @@ function OnbalansTegel() {
         </div>
       </div>
 
+      {/* ── Staleness waarschuwing ── */}
+      {data?.socTijdstip && (() => {
+        const oudheidMin = Math.floor((Date.now() - new Date(data.socTijdstip).getTime()) / 60000);
+        if (oudheidMin >= 3) return (
+          <div className="bg-yellow-900 border border-yellow-700 rounded-lg px-4 py-2 text-yellow-300 text-sm flex items-center gap-2">
+            ⚠️ Sensordata is <strong>{oudheidMin} minuten oud</strong> — Node-RED stuurt mogelijk geen data meer.
+            Controleer <a href="http://192.168.178.17:1881" target="_blank" rel="noreferrer" className="underline">Node-RED</a>.
+          </div>
+        );
+        return null;
+      })()}
+
       {/* ── Live energieflow ── */}
       <div>
         <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Live energieflow</p>
