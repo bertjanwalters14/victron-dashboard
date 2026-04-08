@@ -142,6 +142,7 @@ export default function DashboardClient({ data }) {
         </div>
 
         <OnbalansTegel />
+        <BatterijRealisatie />
         <P1Vergelijking />
 
         <p className="text-center text-gray-600 text-xs mt-6">
@@ -505,6 +506,80 @@ function ZonPrognose({ zon }) {
       </div>
 
       <p className="text-xs text-gray-600">📍 Harkstede · 18 × 370Wp · ZW 45° · 35° helling · Forecast.Solar</p>
+    </div>
+  );
+}
+
+function BatterijRealisatie() {
+  const [dagen, setDagen] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res  = await fetch(`/api/dagresultaat?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' });
+        const json = await res.json();
+        if (json.success) setDagen(json.dagen);
+      } catch(e) { console.error(e); }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  if (loading) return null;
+  if (!dagen.length) return null;
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <h2 className="font-semibold text-gray-200 mb-1">Batterij realisatie</h2>
+      <p className="text-xs text-gray-500 mb-4">Gemeten kWh per dag op basis van live vermogensmeting</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-gray-400 text-xs border-b border-gray-700">
+              <th className="text-left py-2 pr-4">Dag</th>
+              <th className="text-right py-2 px-3">Geladen</th>
+              <th className="text-right py-2 px-3">Ontladen</th>
+              <th className="text-right py-2 px-3">Zon</th>
+              <th className="text-right py-2 px-3">Van net</th>
+              <th className="text-right py-2 px-3">Teruggeleverd</th>
+              <th className="text-right py-2 px-3">Beslissingen</th>
+              <th className="text-right py-2 pl-3">Netto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dagen.map(d => {
+              const b = d.beslissingen || {};
+              const ladenAantal    = b.laden?.aantal    ?? 0;
+              const ontladenAantal = b.ontladen?.aantal ?? 0;
+              const wachtenAantal  = b.wachten?.aantal  ?? 0;
+              return (
+                <tr key={d.dag} className="border-b border-gray-700/50 hover:bg-gray-750">
+                  <td className="py-2 pr-4 text-gray-300 font-medium">{d.dag.slice(5)}</td>
+                  <td className="py-2 px-3 text-right text-green-400">{d.kwh_geladen > 0 ? `${d.kwh_geladen} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-red-400">{d.kwh_ontladen > 0 ? `${d.kwh_ontladen} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-yellow-400">{d.kwh_zon > 0 ? `${d.kwh_zon} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-blue-400">{d.kwh_van_net > 0 ? `${d.kwh_van_net} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-purple-400">{d.kwh_teruggeleverd > 0 ? `${d.kwh_teruggeleverd} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-gray-400 text-xs">
+                    <span className="text-green-500">{ladenAantal}L</span>
+                    {' · '}
+                    <span className="text-red-500">{ontladenAantal}O</span>
+                    {' · '}
+                    <span className="text-orange-400">{wachtenAantal}W</span>
+                  </td>
+                  <td className="py-2 pl-3 text-right font-semibold">
+                    {d.netto_resultaat != null
+                      ? <span className={d.netto_resultaat >= 0 ? 'text-green-400' : 'text-red-400'}>€{d.netto_resultaat.toFixed(2)}</span>
+                      : <span className="text-gray-600">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-600 mt-3">L = laden · O = ontladen · W = wachten · Netto = waarde ontladen − kosten laden van net</p>
     </div>
   );
 }
