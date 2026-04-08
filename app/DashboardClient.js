@@ -187,17 +187,17 @@ function OnbalansTegel() {
   }, []);
 
   const beslissing = data?.beslissing;
-  const adviesKleur = beslissing === 'ontladen' ? 'text-green-400'
-    : beslissing === 'laden' ? 'text-blue-400'
-    : beslissing === 'stop'  ? 'text-red-400'
-    : 'text-yellow-400';
-  const bgKleur = beslissing === 'ontladen' ? 'from-green-950 to-emerald-900 border border-green-800'
-    : beslissing === 'laden' ? 'from-blue-950 to-blue-900 border border-blue-800'
-    : beslissing === 'stop'  ? 'from-red-950 to-red-900 border border-red-800'
-    : 'from-gray-750 to-gray-800 border border-gray-700';
-  const emoji = beslissing === 'ontladen' ? '🟢'
-    : beslissing === 'laden' ? '🔵'
-    : beslissing === 'stop'  ? '🔴' : '🟡';
+  const adviesKleur = beslissing === 'laden'    ? 'text-green-400'
+    : beslissing === 'ontladen' ? 'text-red-400'
+    : beslissing === 'stop'     ? 'text-red-600'
+    : 'text-orange-400';
+  const bgKleur = beslissing === 'laden'    ? 'from-green-950 to-emerald-900 border border-green-800'
+    : beslissing === 'ontladen' ? 'from-red-950 to-red-900 border border-red-800'
+    : beslissing === 'stop'     ? 'from-red-950 to-rose-950 border border-red-900'
+    : 'from-orange-950 to-gray-900 border border-orange-900';
+  const emoji = beslissing === 'laden'    ? '🟢'
+    : beslissing === 'ontladen' ? '🔴'
+    : beslissing === 'stop'     ? '🛑' : '🟠';
 
   const battPower    = (data?.solarW ?? 0) + (data?.gridW ?? 0) - (data?.verbruikW ?? 0);
   const battRichting = battPower > 150 ? '↑ laden' : battPower < -150 ? '↓ ontladen' : 'standby';
