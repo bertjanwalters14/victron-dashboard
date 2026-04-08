@@ -33,7 +33,7 @@ export async function GET(request) {
 
     return Response.json({
       success: true,
-      bericht: 'Migraties klaar: solar_w/grid_w/verbruik_w/essentieel_w/bron kolommen + instellingen tabel aangemaakt',
+      bericht: 'Migraties klaar: solar_w/grid_w/verbruik_w/essentieel_w/bat_w/bron kolommen + instellingen tabel aangemaakt',
     });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
