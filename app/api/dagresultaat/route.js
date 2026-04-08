@@ -21,18 +21,26 @@ export async function GET(request) {
   try {
     // Sensordata: kWh geladen/ontladen per dag (bat_w per minuut)
     const sensorDagen = await sql`
+      WITH met_interval AS (
+        SELECT *,
+          EXTRACT(EPOCH FROM (
+            LEAD(tijdstip) OVER (PARTITION BY date_trunc('day', tijdstip AT TIME ZONE 'Europe/Amsterdam') ORDER BY tijdstip)
+            - tijdstip
+          )) AS interval_sec
+        FROM onbalans_log
+        WHERE bron = 'nodered'
+          AND bat_w IS NOT NULL
+          AND tijdstip > NOW() - INTERVAL '30 days'
+      )
       SELECT
         date_trunc('day', tijdstip AT TIME ZONE 'Europe/Amsterdam') AS dag,
-        ROUND(SUM(CASE WHEN bat_w > 0 THEN  bat_w / 60000.0 ELSE 0 END)::numeric, 2) AS kwh_geladen,
-        ROUND(SUM(CASE WHEN bat_w < 0 THEN -bat_w / 60000.0 ELSE 0 END)::numeric, 2) AS kwh_ontladen,
-        ROUND(SUM(CASE WHEN solar_w > 0 THEN solar_w / 60000.0 ELSE 0 END)::numeric, 2) AS kwh_zon,
-        ROUND(SUM(CASE WHEN grid_w  > 0 THEN  grid_w / 60000.0 ELSE 0 END)::numeric, 2) AS kwh_van_net,
-        ROUND(SUM(CASE WHEN grid_w  < 0 THEN -grid_w / 60000.0 ELSE 0 END)::numeric, 2) AS kwh_teruggeleverd,
+        ROUND(SUM(CASE WHEN bat_w   > 0 AND interval_sec IS NOT NULL THEN  bat_w   * interval_sec / 3600000.0 ELSE 0 END)::numeric, 2) AS kwh_geladen,
+        ROUND(SUM(CASE WHEN bat_w   < 0 AND interval_sec IS NOT NULL THEN -bat_w   * interval_sec / 3600000.0 ELSE 0 END)::numeric, 2) AS kwh_ontladen,
+        ROUND(SUM(CASE WHEN solar_w > 0 AND interval_sec IS NOT NULL THEN  solar_w * interval_sec / 3600000.0 ELSE 0 END)::numeric, 2) AS kwh_zon,
+        ROUND(SUM(CASE WHEN grid_w  > 0 AND interval_sec IS NOT NULL THEN  grid_w  * interval_sec / 3600000.0 ELSE 0 END)::numeric, 2) AS kwh_van_net,
+        ROUND(SUM(CASE WHEN grid_w  < 0 AND interval_sec IS NOT NULL THEN -grid_w  * interval_sec / 3600000.0 ELSE 0 END)::numeric, 2) AS kwh_teruggeleverd,
         COUNT(*) AS metingen
-      FROM onbalans_log
-      WHERE bron = 'nodered'
-        AND bat_w IS NOT NULL
-        AND tijdstip > NOW() - INTERVAL '30 days'
+      FROM met_interval
       GROUP BY 1
       ORDER BY 1 DESC
     `;

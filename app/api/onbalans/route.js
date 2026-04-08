@@ -361,7 +361,11 @@ export async function GET(request) {
     let solarVandaagGemeten = null;
     try {
       const solarRows = await sql`
-        SELECT ROUND(SUM(solar_w / 60000.0)::numeric, 2) AS kwh
+        SELECT ROUND(
+          SUM(solar_w * EXTRACT(EPOCH FROM (
+            LEAD(tijdstip) OVER (ORDER BY tijdstip) - tijdstip
+          )) / 3600000.0)::numeric
+        , 2) AS kwh
         FROM onbalans_log
         WHERE bron = 'nodered'
           AND solar_w IS NOT NULL
