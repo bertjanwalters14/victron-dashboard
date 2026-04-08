@@ -77,7 +77,7 @@ async function haalZonnePrognose(nu) {
 
   try {
     // Forecast.Solar: lat=53.20, lon=6.75, dec=35°, az=45 (ZW), 6.66 kWp
-    const res = await fetch('https://api.forecast.solar/estimate/53.20/6.75/35/180/6.66', {
+    const res = await fetch('https://api.forecast.solar/estimate/53.20/6.75/35/0/6.66', {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) throw new Error(`Forecast.Solar HTTP ${res.status}`);
