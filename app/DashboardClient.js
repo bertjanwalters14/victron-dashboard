@@ -141,6 +141,7 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
+        <OnbalansTegel />
         <P1Vergelijking />
 
         <p className="text-center text-gray-600 text-xs mt-6">
@@ -148,6 +149,104 @@ export default function DashboardClient({ data }) {
         </p>
       </div>
     </main>
+  );
+}
+
+function OnbalansTegel() {
+  const [data, setData]       = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  async function fetchOnbalans() {
+    try {
+      const res = await fetch('/api/onbalans?secret=Nummer14!');
+      const json = await res.json();
+      if (json.success) setData(json);
+    } catch(e) { console.error(e); }
+    setLoading(false);
+  }
+
+  useState(() => {
+    fetchOnbalans();
+    const iv = setInterval(fetchOnbalans, 60 * 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const kleur = data?.beslissing === 'ontladen' ? 'text-green-400'
+    : data?.beslissing === 'laden'    ? 'text-blue-400'
+    : data?.beslissing === 'stop'     ? 'text-red-400'
+    : 'text-yellow-400';
+
+  const bgKleur = data?.beslissing === 'ontladen' ? 'from-green-900 to-emerald-800'
+    : data?.beslissing === 'laden'    ? 'from-blue-900 to-blue-800'
+    : data?.beslissing === 'stop'     ? 'from-red-900 to-red-800'
+    : 'from-gray-800 to-gray-700';
+
+  const emoji = data?.beslissing === 'ontladen' ? '🟢'
+    : data?.beslissing === 'laden'    ? '🔵'
+    : data?.beslissing === 'stop'     ? '🔴'
+    : '🟡';
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <h2 className="font-semibold text-gray-200 mb-4">⚡ Markt & Beslissing</h2>
+
+      {/* Hoofd tegel */}
+      <div className={`bg-gradient-to-r ${bgKleur} rounded-xl p-5 mb-4 flex justify-between items-center`}>
+        <div>
+          <p className="text-gray-300 text-sm font-medium mb-1">Huidig advies (simulatie)</p>
+          <p className={`text-3xl font-bold ${kleur}`}>
+            {loading ? '...' : `${emoji} ${data?.beslissing?.toUpperCase()}`}
+          </p>
+          <p className="text-gray-400 text-xs mt-1">{data?.reden}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-gray-400 text-xs mb-1">EPEX prijs</p>
+          <p className="text-2xl font-bold text-white">
+            {data?.prijs != null ? `€${data.prijs.toFixed(4)}` : '—'}
+          </p>
+          <p className="text-gray-400 text-xs mt-1">
+            Batterij: {data?.batterijPct != null ? `${data.batterijPct}%` : '—'}
+          </p>
+        </div>
+      </div>
+
+      {/* Drempels */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        {[
+          { l: 'Ontladen boven', v: `€${data?.drempels?.ontladen ?? 0.25}`, c: 'text-green-400' },
+          { l: 'Laden onder',    v: `€${data?.drempels?.laden ?? 0.05}`,    c: 'text-blue-400' },
+          { l: 'Bat. minimum',   v: `${data?.drempels?.batMin ?? 10}%`,     c: 'text-red-400' },
+          { l: 'Bat. maximum',   v: `${data?.drempels?.batMax ?? 90}%`,     c: 'text-yellow-400' },
+        ].map(d => (
+          <div key={d.l} className="bg-gray-700 rounded-lg p-3 text-center">
+            <p className="text-gray-500 text-xs mb-1">{d.l}</p>
+            <p className={`text-lg font-bold ${d.c}`}>{d.v}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Prijsgrafiek vandaag */}
+      {data?.prijzenVandaag?.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-500 mb-2">Prijzen vandaag (EPEX)</p>
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={data.prijzenVandaag}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis dataKey="tijd" tick={{ fontSize: 9, fill: '#9CA3AF' }} interval={3} />
+              <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} tickFormatter={v => `€${v.toFixed(2)}`} />
+              <Tooltip
+                formatter={v => [`€${v.toFixed(4)}`, 'Prijs']}
+                contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
+                labelStyle={{ color: '#9CA3AF' }}
+              />
+              <Line type="monotone" dataKey="prijs" stroke="#60A5FA" dot={false} strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-600 mt-3">Ververst elke minuut · DESS blijft actief · alleen simulatie</p>
+    </div>
   );
 }
 
