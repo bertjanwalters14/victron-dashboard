@@ -9,18 +9,42 @@ function getDb() {
 const BAT_MIN_PCT        = 10;
 const BAT_MAX_PCT        = 90;
 
-// Prijsformule: (spotprijs + leverancier + energiebelasting) × BTW
-const OPSLAG_LEVERANCIER = 0.03;
-const ENERGIEBELASTING   = 0.13;
-const BTW_FACTOR         = 1.21;
+// Frank Energie: priceIncludingMarkup is ex BTW → nog × 1.21
+const BTW_FACTOR = 1.21;
 
 // Dynamische drempels: percentiel van de dagprijzen
 const PERCENTIEL_LADEN    = 25; // goedkoopste 25% van de dag → laden
 const PERCENTIEL_ONTLADEN = 75; // duurste 25% van de dag → ontladen
 const VLOER_ONTLADEN      = 0.20; // nooit ontladen onder €0.20 consumentenprijs
 
-function spotNaarConsumer(spot) {
-  return (spot + OPSLAG_LEVERANCIER + ENERGIEBELASTING) * BTW_FACTOR;
+function frankNaarConsumer(priceIncludingMarkup) {
+  return priceIncludingMarkup * BTW_FACTOR;
+}
+
+async function haalFrankEnergiePrijzen(vandaag) {
+  // Frank Energie GraphQL — geen authenticatie nodig voor marktprijzen
+  const morgen = new Date(vandaag + 'T00:00:00Z');
+  morgen.setUTCDate(morgen.getUTCDate() + 1);
+  const morgenStr = morgen.toISOString().split('T')[0];
+
+  const res = await fetch('https://graphcdn.frankenergie.nl/', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `query {
+        marketPricesElectricity(startDate: "${vandaag}", endDate: "${morgenStr}") {
+          from
+          till
+          marketPrice
+          priceIncludingMarkup
+        }
+      }`,
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Frank Energie API fout: ${res.status}`);
+  const json = await res.json();
+  return json.data?.marketPricesElectricity || [];
 }
 
 function berekenDrempels(consumerPrijzen) {
@@ -95,22 +119,19 @@ export async function GET(request) {
     const nu      = new Date();
     const vandaag = nu.toISOString().split('T')[0];
 
-    // 1. EPEX kwartierprijs ophalen via EnergyZero (primaire handelsprijs)
-    const prijsRes = await fetch(
-      `https://api.energyzero.nl/v1/energyprices?fromDate=${vandaag}T00:00:00.000Z&tillDate=${vandaag}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
-    );
-    const prijsData      = await prijsRes.json();
-    const epexPrijzen    = prijsData?.Prices || [];
-    // EnergyZero geeft uurdata — zoek het uur dat het huidige moment bevat
-    const huidigUur = epexPrijzen.find(p => {
-      const t = new Date(p.readingDate);
-      return t <= nu && new Date(t.getTime() + 60 * 60000) > nu;
-    }) || epexPrijzen[epexPrijzen.length - 1];
-    const spotPrijs     = huidigUur ? huidigUur.price : null;
-    const consumerPrijs = spotPrijs !== null ? spotNaarConsumer(spotPrijs) : null;
+    // 1. Uurprijzen ophalen via Frank Energie (marketPrice = spot, priceIncludingMarkup = ex BTW)
+    const frankPrijzen = await haalFrankEnergiePrijzen(vandaag);
+    const huidigUur    = frankPrijzen.find(p => {
+      const van = new Date(p.from);
+      const tot = new Date(p.till);
+      return van <= nu && tot > nu;
+    }) || frankPrijzen[frankPrijzen.length - 1];
+
+    const spotPrijs     = huidigUur ? parseFloat(huidigUur.marketPrice)            : null;
+    const consumerPrijs = huidigUur ? frankNaarConsumer(parseFloat(huidigUur.priceIncludingMarkup)) : null;
 
     // Dynamische drempels berekenen op basis van vandaag
-    const consumerPrijzenVandaag = epexPrijzen.map(p => spotNaarConsumer(p.price));
+    const consumerPrijzenVandaag = frankPrijzen.map(p => frankNaarConsumer(parseFloat(p.priceIncludingMarkup)));
     const { laadDrempel, ontlaadDrempel } = berekenDrempels(consumerPrijzenVandaag);
 
     // 2. TenneT onbalansprijzen ophalen (aanvullende info)
@@ -151,16 +172,16 @@ export async function GET(request) {
       VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing}, ${batterijPct})
     `;
 
-    // 6. Alle EPEX prijzen van vandaag voor grafiek (consumer prijs)
-    const allePrijzen = epexPrijzen.map(p => ({
-      tijd:  new Date(p.readingDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
-      prijs: +spotNaarConsumer(p.price).toFixed(4),
-      spot:  +p.price.toFixed(4),
+    // 6. Alle prijzen van vandaag voor grafiek
+    const allePrijzen = frankPrijzen.map(p => ({
+      tijd:  new Date(p.from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
+      prijs: +frankNaarConsumer(parseFloat(p.priceIncludingMarkup)).toFixed(4),
+      spot:  +parseFloat(p.marketPrice).toFixed(4),
     }));
 
-    // Exacte tijd-label van het huidige kwartier (matcht altijd met grafiekdata)
+    // Exacte tijd-label van het huidige uur (matcht altijd met grafiekdata)
     const huidigeTijd = huidigUur
-      ? new Date(huidigUur.readingDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
+      ? new Date(huidigUur.from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
       : null;
 
     return Response.json({
