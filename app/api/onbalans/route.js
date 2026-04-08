@@ -12,6 +12,10 @@ const BAT_MIN_PCT             = 10;
 const BAT_MAX_PCT             = 90;
 const BATTERIJ_CAPACITEIT_KWH = 32;
 
+// Groen modus drempels
+const GROEN_MAX_LADEN_PCT = 70;  // Alleen van net laden als batterij < 70%
+const GROEN_MIN_SOLAR_W   = 300; // Als live zon > 300W actief → niet laden van net
+
 // Dynamische drempels: percentiel van de dagprijzen
 const PERCENTIEL_LADEN    = 25;
 const PERCENTIEL_ONTLADEN = 75;
@@ -123,6 +127,36 @@ async function haalZonnePrognose(nu) {
   }
 }
 
+// ── GROEN modus: zelfvoorzienend, geen actief ontladen ──────────────────────
+function bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, zonResterendKwh, solarW) {
+  if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
+    return { beslissing: 'stop', reden: `Batterij te laag (${batterijPct}%)` };
+  }
+  if (consumerPrijs < 0) {
+    return { beslissing: 'laden', reden: `Negatieve prijs (€${consumerPrijs.toFixed(4)}) — gratis stroom` };
+  }
+  // Zon produceert nu al → laat zon het doen
+  if (solarW !== null && solarW > GROEN_MIN_SOLAR_W) {
+    return { beslissing: 'wachten', reden: `Zon produceert ${solarW}W — geen netladen nodig` };
+  }
+  // Zon vult batterij vandaag nog → niet van net laden
+  if (zonResterendKwh !== null && batterijPct !== null) {
+    const ruimteKwh = BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - batterijPct) / 100;
+    if (zonResterendKwh >= ruimteKwh * 0.8) {
+      return {
+        beslissing: 'wachten',
+        reden: `Zon vult batterij (${zonResterendKwh.toFixed(1)} kWh verwacht, ${ruimteKwh.toFixed(1)} kWh ruimte)`,
+      };
+    }
+  }
+  // Goedkope stroom + batterij heeft ruimte + geen zon verwacht → laden
+  if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < GROEN_MAX_LADEN_PCT)) {
+    return { beslissing: 'laden', reden: `Groen: prijs laag (€${consumerPrijs.toFixed(4)} ≤ €${laadDrempel.toFixed(4)}) en batterij < ${GROEN_MAX_LADEN_PCT}%` };
+  }
+  return { beslissing: 'wachten', reden: 'Groen: wachten op zon of lage prijs' };
+}
+
+// ── HANDEL modus: actief handelen op prijssignalen ───────────────────────────
 function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh) {
   if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
     return { beslissing: 'stop', reden: `Batterij te laag (${batterijPct}%)` };
@@ -238,7 +272,14 @@ export async function GET(request) {
     const tennetShortage = huidigTennet ? mwhNaarKwh(parseFloat(huidigTennet.shortage)) : null;
     const tennetSurplus  = huidigTennet ? mwhNaarKwh(parseFloat(huidigTennet.surplus))  : null;
 
-    // 3. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
+    // 3. Modus ophalen (handel / groen) — fallback naar handel als tabel nog niet bestaat
+    let modus = 'handel';
+    try {
+      const modusRows = await sql`SELECT waarde FROM instellingen WHERE sleutel = 'modus'`;
+      modus = modusRows[0]?.waarde ?? 'handel';
+    } catch { /* instellingen tabel bestaat nog niet */ }
+
+    // 4. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
     // SOC en sensor data apart opvragen: onbalans INSERT heeft geen solar/grid/verbruik
     const sql = getDb();
     // Node-RED rijen hebben altijd solar_w IS NOT NULL — zo onderscheiden we ze van
@@ -257,10 +298,12 @@ export async function GET(request) {
     const verbruikW    = r ? Math.round(parseFloat(r.verbruik_w)) : null;
     const socTijdstip  = r ? r.tijdstip                           : null;
 
-    // 4. Beslissing bepalen (prijs + zonprognose)
+    // 5. Beslissing bepalen (prijs + zonprognose + modus)
     const zonResterendKwh = zonPrognose?.vandaagResterendKwh ?? null;
     const { beslissing, reden } = consumerPrijs !== null
-      ? bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh)
+      ? modus === 'groen'
+        ? bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, zonResterendKwh, solarW)
+        : bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
 
     // 5. Opslaan in database — alleen prijs + beslissing (geen batterij_pct, want
@@ -285,13 +328,16 @@ export async function GET(request) {
       const zonWatt = zonWattPerTijd[tijdLabel] ?? 0;
 
       let zone;
-      if (consP >= ontlaadDrempel) {
-        zone = 'ontladen';
-      } else if (consP <= laadDrempel) {
-        // Zon-override: als er dat uur >500W zon verwacht wordt, laden we toch niet van het net
-        zone = zonWatt > 500 ? 'zon' : 'laden';
+      if (modus === 'groen') {
+        // Groen: geen actief ontladen, laden alleen als batterij < 70%
+        zone = consP <= laadDrempel
+          ? (zonWatt > 500 ? 'zon' : 'laden')
+          : 'wachten';
       } else {
-        zone = 'wachten';
+        // Handel: ontladen bij hoge prijs, laden bij lage prijs
+        if (consP >= ontlaadDrempel)      zone = 'ontladen';
+        else if (consP <= laadDrempel)    zone = zonWatt > 500 ? 'zon' : 'laden';
+        else                              zone = 'wachten';
       }
 
       return {
@@ -309,6 +355,7 @@ export async function GET(request) {
 
     return Response.json({
       success:     true,
+      modus,
       prijsBron,
       tijdstip:    nu.toISOString(),
       prijs:       consumerPrijs,

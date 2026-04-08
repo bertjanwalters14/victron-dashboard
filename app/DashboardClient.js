@@ -170,12 +170,16 @@ function minsGeleden(iso) {
 function OnbalansTegel() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
+  const [modus, setModus]     = useState('handel');
 
   async function fetchOnbalans() {
     try {
       const res  = await fetch('/api/onbalans?secret=Nummer14!');
       const json = await res.json();
-      if (json.success) setData(json);
+      if (json.success) {
+        setData(json);
+        if (json.modus) setModus(json.modus);
+      }
     } catch(e) { console.error(e); }
     setLoading(false);
   }
@@ -206,12 +210,17 @@ function OnbalansTegel() {
 
   return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6 space-y-5">
-      <h2 className="font-semibold text-gray-100 text-lg">⚡ Markt &amp; Energieflow</h2>
+      <div className="flex justify-between items-center">
+        <h2 className="font-semibold text-gray-100 text-lg">⚡ Markt &amp; Energieflow</h2>
+        <ModusToggle modus={modus} onWissel={setModus} />
+      </div>
 
       {/* ── Adviesblok ── */}
       <div className={`bg-gradient-to-r ${bgKleur} rounded-xl p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3`}>
         <div>
-          <p className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">Huidig advies · simulatie</p>
+          <p className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">
+            Huidig advies · {modus === 'groen' ? '🌿 groen modus' : '📈 handel modus'}
+          </p>
           <p className={`text-3xl font-extrabold tracking-tight ${adviesKleur}`}>
             {loading ? '…' : `${emoji} ${beslissing?.toUpperCase() ?? '—'}`}
           </p>
@@ -372,10 +381,53 @@ function OnbalansTegel() {
       <ZonPrognose zon={data?.zonPrognose} />
 
       <p className="text-xs text-gray-600 pt-1 border-t border-gray-700">
-        Ververst elke minuut&ensp;·&ensp;DESS actief (simulatie)&ensp;·&ensp;
+        Ververst elke minuut&ensp;·&ensp;
+        {modus === 'groen' ? '🌿 Groen modus actief' : '📈 Handel modus actief'}&ensp;·&ensp;
         {data?.tijdstip ? `API ${minsGeleden(data.tijdstip)}` : ''}
       </p>
     </div>
+  );
+}
+
+function ModusToggle({ modus, onWissel }) {
+  const [bezig, setBezig] = useState(false);
+  const isGroen = modus === 'groen';
+
+  async function wisselModus() {
+    const nieuw = isGroen ? 'handel' : 'groen';
+    setBezig(true);
+    try {
+      const res  = await fetch('/api/modus?secret=Nummer14!', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ modus: nieuw }),
+      });
+      const json = await res.json();
+      if (json.success) onWissel(nieuw);
+    } catch(e) { console.error('Modus wisselen mislukt:', e); }
+    setBezig(false);
+  }
+
+  return (
+    <button
+      onClick={wisselModus}
+      disabled={bezig}
+      title={isGroen ? 'Klik om naar Handel modus te wisselen' : 'Klik om naar Groen modus te wisselen'}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
+        disabled:opacity-50 select-none
+        ${isGroen
+          ? 'bg-green-950 border-green-700 text-green-300 hover:bg-green-900'
+          : 'bg-blue-950 border-blue-700 text-blue-300 hover:bg-blue-900'
+        }`}
+    >
+      {/* Toggle pill */}
+      <span className={`relative inline-flex h-5 w-9 rounded-full transition-colors
+        ${isGroen ? 'bg-green-500' : 'bg-blue-500'}`}>
+        <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform
+          ${isGroen ? 'translate-x-4' : 'translate-x-0'}`} />
+      </span>
+      {bezig ? '…' : isGroen ? '🌿 Groen' : '📈 Handel'}
+    </button>
   );
 }
 
