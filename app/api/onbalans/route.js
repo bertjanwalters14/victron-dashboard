@@ -127,6 +127,24 @@ async function haalZonnePrognose(nu) {
   }
 }
 
+// ── Essentieel override: als wachten maar net levert aan essentiële lasten → ontladen ─
+// Geldt in beide modi. Vuurt alleen als beslissing = wachten, grid importeert en
+// batterij heeft genoeg reserve (> BAT_MIN_PCT + 10%).
+function essentieelOverride(beslissing, reden, batterijPct, essentieelW, gridW) {
+  if (
+    beslissing === 'wachten' &&
+    essentieelW != null && essentieelW > 50 &&
+    gridW       != null && gridW       > 50 &&
+    (batterijPct === null || batterijPct > BAT_MIN_PCT + 10)
+  ) {
+    return {
+      beslissing: 'ontladen',
+      reden: `Essentieel: batterij dekt ${essentieelW}W (net levert anders ${gridW}W)`,
+    };
+  }
+  return { beslissing, reden };
+}
+
 // ── HANDEL modus: prijsoptimalisatie is prio, zon voorkomt onnodige netaankoop ─
 function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, solarW) {
   if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
@@ -320,11 +338,17 @@ export async function GET(request) {
     // 5. Beslissing bepalen (prijs + zonprognose + modus)
     const zonResterendKwh = zonPrognose?.vandaagResterendKwh ?? null;
     const morgenKwh = zonPrognose?.morgenKwh ?? null;
-    const { beslissing, reden } = consumerPrijs !== null
+    const rawResultaat = consumerPrijs !== null
       ? modus === 'groen'
         ? bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, morgenKwh, solarW)
         : bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, solarW)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
+
+    // Essentieel override: als wachten maar essentiële lasten trekken van net → ontladen
+    const { beslissing, reden } = essentieelOverride(
+      rawResultaat.beslissing, rawResultaat.reden,
+      batterijPct, essentieelW, gridW
+    );
 
     // 5. Opslaan in database — alleen prijs + beslissing (geen batterij_pct, want
     //    dat hoort bij Node-RED rijen; anders vond de SOC-query deze rij als nieuwste)
