@@ -469,7 +469,7 @@ function ZonPrognose({ zon }) {
         <p className="text-sm font-semibold text-gray-200">☀️ Zonneprognose</p>
         <div className="flex flex-wrap gap-4 text-sm">
           <span className="text-gray-500">Vandaag totaal&nbsp;<span className="text-amber-400 font-semibold">{zon.vandaagKwh} kWh</span></span>
-          <span className="text-gray-500">Resterend&nbsp;<span className="text-yellow-300 font-semibold">{zon.vandaagResterendKwh} kWh</span></span>
+          <span className="text-gray-500">Gemeten&nbsp;<span className="text-green-400 font-semibold">{zon.vandaagGemeten != null ? `${zon.vandaagGemeten} kWh` : '—'}</span></span>
           <span className="text-gray-500">Morgen&nbsp;<span className="text-orange-400 font-semibold">{zon.morgenKwh} kWh</span></span>
         </div>
       </div>
@@ -505,7 +505,7 @@ function ZonPrognose({ zon }) {
         </div>
       </div>
 
-      <p className="text-xs text-gray-600">📍 Harkstede · 18 × 370Wp · ZW 45° · 35° helling · Forecast.Solar</p>
+      <p className="text-xs text-gray-600">📍 Harkstede · 18 × 370Wp · Zuid 0° · 35° helling · Forecast.Solar</p>
     </div>
   );
 }

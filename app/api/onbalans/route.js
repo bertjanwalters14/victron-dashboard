@@ -357,6 +357,19 @@ export async function GET(request) {
       VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing})
     `;
 
+    // 5b. Daadwerkelijk gemeten zonne-energie vandaag (uit onze eigen DB)
+    let solarVandaagGemeten = null;
+    try {
+      const solarRows = await sql`
+        SELECT ROUND(SUM(solar_w / 60000.0)::numeric, 2) AS kwh
+        FROM onbalans_log
+        WHERE bron = 'nodered'
+          AND solar_w IS NOT NULL
+          AND tijdstip >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam'
+      `;
+      solarVandaagGemeten = solarRows[0]?.kwh != null ? parseFloat(solarRows[0].kwh) : null;
+    } catch { /* negeer als query faalt */ }
+
     // 6. Alle prijzen van vandaag voor grafiek — incl. zone per uur
     // Bouw een snelle lookup: tijdlabel → verwacht zonnewatt (voor zon-override markering)
     const zonWattPerTijd = {};
@@ -422,7 +435,7 @@ export async function GET(request) {
       zonPrognose: zonPrognose ? {
         vandaagKwh:          +zonPrognose.vandaagKwh.toFixed(2),
         morgenKwh:           +zonPrognose.morgenKwh.toFixed(2),
-        vandaagResterendKwh: +zonPrognose.vandaagResterendKwh.toFixed(2),
+        vandaagGemeten:      solarVandaagGemeten,
         grafiekData:          zonPrognose.grafiekData,
       } : null,
     });
