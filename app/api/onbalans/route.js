@@ -6,8 +6,6 @@ function getDb() {
   return neon(url);
 }
 
-const DREMPEL_ONTLADEN   = 0.25;  // EUR/kWh consumentenprijs
-const DREMPEL_LADEN      = 0.05;  // EUR/kWh consumentenprijs
 const BAT_MIN_PCT        = 10;
 const BAT_MAX_PCT        = 90;
 
@@ -16,22 +14,38 @@ const OPSLAG_LEVERANCIER = 0.03;
 const ENERGIEBELASTING   = 0.13;
 const BTW_FACTOR         = 1.21;
 
+// Dynamische drempels: percentiel van de dagprijzen
+const PERCENTIEL_LADEN    = 25; // goedkoopste 25% van de dag → laden
+const PERCENTIEL_ONTLADEN = 75; // duurste 25% van de dag → ontladen
+const VLOER_ONTLADEN      = 0.20; // nooit ontladen onder €0.20 consumentenprijs
+
 function spotNaarConsumer(spot) {
   return (spot + OPSLAG_LEVERANCIER + ENERGIEBELASTING) * BTW_FACTOR;
 }
 
-function bepaalBeslissing(consumerPrijs, batterijPct, tennetShortage, tennetSurplus) {
+function berekenDrempels(consumerPrijzen) {
+  const gesorteerd = [...consumerPrijzen].sort((a, b) => a - b);
+  const n = gesorteerd.length;
+  const laadDrempel    = gesorteerd[Math.floor(n * PERCENTIEL_LADEN / 100)];
+  const ontlaadDrempel = Math.max(
+    gesorteerd[Math.floor(n * PERCENTIEL_ONTLADEN / 100)],
+    VLOER_ONTLADEN
+  );
+  return { laadDrempel, ontlaadDrempel };
+}
+
+function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel) {
   if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
     return { beslissing: 'stop', reden: `Batterij te laag (${batterijPct}%)` };
   }
   if (consumerPrijs < 0) {
-    return { beslissing: 'laden', reden: `Negatieve consumentenprijs (€${consumerPrijs.toFixed(4)}) — gratis stroom` };
+    return { beslissing: 'laden', reden: `Negatieve prijs (€${consumerPrijs.toFixed(4)}) — gratis stroom` };
   }
-  if (consumerPrijs > DREMPEL_ONTLADEN && (batterijPct === null || batterijPct > BAT_MIN_PCT)) {
-    return { beslissing: 'ontladen', reden: `Prijs hoog (€${consumerPrijs.toFixed(4)} > €${DREMPEL_ONTLADEN})` };
+  if (consumerPrijs >= ontlaadDrempel && (batterijPct === null || batterijPct > BAT_MIN_PCT)) {
+    return { beslissing: 'ontladen', reden: `Prijs hoog (€${consumerPrijs.toFixed(4)} ≥ €${ontlaadDrempel.toFixed(4)})` };
   }
-  if (consumerPrijs < DREMPEL_LADEN && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)} < €${DREMPEL_LADEN})` };
+  if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)} ≤ €${laadDrempel.toFixed(4)})` };
   }
   return { beslissing: 'wachten', reden: `Prijs neutraal (€${consumerPrijs.toFixed(4)})` };
 }
@@ -88,6 +102,10 @@ export async function GET(request) {
     const spotPrijs     = huidigKwartier ? huidigKwartier.price : null;
     const consumerPrijs = spotPrijs !== null ? spotNaarConsumer(spotPrijs) : null;
 
+    // Dynamische drempels berekenen op basis van vandaag
+    const consumerPrijzenVandaag = epexPrijzen.map(p => spotNaarConsumer(p.price));
+    const { laadDrempel, ontlaadDrempel } = berekenDrempels(consumerPrijzenVandaag);
+
     // 2. TenneT onbalansprijzen ophalen (aanvullende info)
     const tennетData   = await haalTenneTData(nu);
     const tennетPoints = tennетData?.TimeSeries?.[0]?.Period?.Points || [];
@@ -108,9 +126,9 @@ export async function GET(request) {
     `;
     const batterijPct = socRow.length > 0 ? parseFloat(socRow[0].batterij_pct) : null;
 
-    // 4. Beslissing bepalen op consumentenprijs (incl. BTW + opslag)
+    // 4. Beslissing bepalen op basis van dagelijkse dynamische drempels
     const { beslissing, reden } = consumerPrijs !== null
-      ? bepaalBeslissing(consumerPrijs, batterijPct, tennetShortage, tennetSurplus)
+      ? bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
 
     // 5. Opslaan in database (consumer prijs)
@@ -120,8 +138,9 @@ export async function GET(request) {
     `;
 
     // 6. Alle EPEX prijzen van vandaag voor grafiek (consumer prijs)
+    // 'en-GB' locale geeft altijd "HH:MM" formaat (geen punt-separator zoals nl-NL soms doet)
     const allePrijzen = epexPrijzen.map(p => ({
-      tijd:  new Date(p.readingDate).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
+      tijd:  new Date(p.readingDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
       prijs: +spotNaarConsumer(p.price).toFixed(4),
       spot:  +p.price.toFixed(4),
     }));
@@ -139,10 +158,11 @@ export async function GET(request) {
         surplus:  tennetSurplus,
       } : null,
       drempels: {
-        ontladen: DREMPEL_ONTLADEN,
-        laden:    DREMPEL_LADEN,
-        batMin:   BAT_MIN_PCT,
-        batMax:   BAT_MAX_PCT,
+        ontladen:   +ontlaadDrempel.toFixed(4),
+        laden:      +laadDrempel.toFixed(4),
+        batMin:     BAT_MIN_PCT,
+        batMax:     BAT_MAX_PCT,
+        percentiel: { laden: PERCENTIEL_LADEN, ontladen: PERCENTIEL_ONTLADEN },
       },
       prijzenVandaag: allePrijzen,
     });

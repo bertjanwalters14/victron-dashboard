@@ -164,7 +164,7 @@ function OnbalansTegel() {
       if (json.success) setData(json);
     } catch(e) { console.error(e); }
     setLoading(false);
-    setNu(new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }));
+    setNu(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }));
   }
 
   useEffect(() => {
@@ -215,11 +215,11 @@ function OnbalansTegel() {
         </div>
       </div>
 
-      {/* Drempels */}
+      {/* Drempels — dagelijks dynamisch op basis van percentiel */}
       <div className="grid grid-cols-4 gap-3 mb-4">
         {[
-          { l: 'Ontladen boven', v: `€${data?.drempels?.ontladen ?? 0.25}`, c: 'text-green-400' },
-          { l: 'Laden onder',    v: `€${data?.drempels?.laden ?? 0.05}`,    c: 'text-blue-400' },
+          { l: `Ontladen boven (p${data?.drempels?.percentiel?.ontladen ?? 75})`, v: data?.drempels?.ontladen != null ? `€${data.drempels.ontladen.toFixed(4)}` : '—', c: 'text-green-400' },
+          { l: `Laden onder (p${data?.drempels?.percentiel?.laden ?? 25})`,       v: data?.drempels?.laden    != null ? `€${data.drempels.laden.toFixed(4)}`    : '—', c: 'text-blue-400' },
           { l: 'Bat. minimum',   v: `${data?.drempels?.batMin ?? 10}%`,     c: 'text-red-400' },
           { l: 'Bat. maximum',   v: `${data?.drempels?.batMax ?? 90}%`,     c: 'text-yellow-400' },
         ].map(d => (
