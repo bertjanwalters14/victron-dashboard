@@ -71,58 +71,77 @@ function berekenDrempels(consumerPrijzen) {
 }
 
 async function haalZonnePrognose(nu) {
-  const vandaag = nu.toISOString().split('T')[0];
-  const morgen  = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate() + 1));
+  const vandaag   = nu.toISOString().split('T')[0];
+  const morgen    = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate() + 1));
   const morgenStr = morgen.toISOString().split('T')[0];
 
+  const resourceId = process.env.SOLCAST_RESOURCE_ID;
+  const apiKey     = process.env.SOLCAST_API_KEY;
+
+  if (!resourceId || !apiKey) {
+    console.error('Solcast env vars ontbreken');
+    return null;
+  }
+
   try {
-    // Forecast.Solar: lat=53.20, lon=6.75, dec=35°, az=45 (ZW), 6.66 kWp
-    const res = await fetch('https://api.forecast.solar/estimate/53.20/6.75/35/0/6.66', {
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Forecast.Solar HTTP ${res.status}`);
+    // Solcast rooftop forecast — 48 periodes van 30 min (24 uur vooruit)
+    const res = await fetch(
+      `https://api.solcast.com.au/rooftop_sites/${resourceId}/forecasts?format=json&hours=48`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    if (!res.ok) throw new Error(`Solcast HTTP ${res.status}`);
     const data = await res.json();
+    const periodes = data.forecasts ?? [];
 
-    const wattHoursDay    = data.result?.watt_hours_day    || {};
-    const wattHoursPeriod = data.result?.watt_hours_period || {};
-    const watts           = data.result?.watts             || {};
-
-    const vandaagKwh = (wattHoursDay[vandaag]  || 0) / 1000;
-    const morgenKwh  = (wattHoursDay[morgenStr] || 0) / 1000;
-
-    // Forecast.Solar geeft tijden in lokale tijd van de locatie (Amsterdam = UTC+2 in april)
-    const nuAms    = new Date(nu.getTime() + 2 * 3600000);
-    const nuAmsStr = nuAms.toISOString().replace('T', ' ').slice(0, 19);
-
+    // Aggregeer per uur en per dag
+    let vandaagKwh          = 0;
+    let morgenKwh           = 0;
     let vandaagResterendKwh = 0;
-    for (const [tijdStr, wh] of Object.entries(wattHoursPeriod)) {
-      if (tijdStr.startsWith(vandaag) && tijdStr > nuAmsStr) {
-        vandaagResterendKwh += wh / 1000;
+    const uurData = {}; // { 'HH:MM' + dag: { watt, dag } }
+
+    for (const p of periodes) {
+      // period_end is UTC, periode is 30 min
+      const eindUtc  = new Date(p.period_end);
+      const beginUtc = new Date(eindUtc.getTime() - 30 * 60000);
+      const kwh      = (p.pv_estimate ?? 0) * 0.5; // kW × 0.5h = kWh
+      const watt     = (p.pv_estimate ?? 0) * 1000; // kW → W
+
+      const dagStr = beginUtc.toISOString().split('T')[0];
+      const isVandaag = dagStr === vandaag;
+      const isMorgen  = dagStr === morgenStr;
+
+      if (isVandaag) {
+        vandaagKwh += kwh;
+        if (beginUtc >= nu) vandaagResterendKwh += kwh;
+      }
+      if (isMorgen) morgenKwh += kwh;
+
+      // Grafiek: lokale Amsterdam tijd (UTC+2 in april)
+      if (isVandaag || isMorgen) {
+        const lokaalBegin = new Date(beginUtc.getTime() + 2 * 3600000);
+        const tijdLabel   = lokaalBegin.toISOString().slice(11, 16);
+        const key         = (isVandaag ? 'vandaag' : 'morgen') + '_' + tijdLabel;
+        if (!uurData[key]) {
+          uurData[key] = { tijd: tijdLabel, watt: 0, dag: isVandaag ? 'vandaag' : 'morgen' };
+        }
+        uurData[key].watt += watt / 2; // gemiddeld over twee 30-min slots per uur
       }
     }
 
-    // Grafiekdata vandaag + morgen gesorteerd op tijd
-    const grafiekData = [];
-    for (const [tijdStr, w] of Object.entries(watts)) {
-      const isVandaag = tijdStr.startsWith(vandaag);
-      const isMorgen  = tijdStr.startsWith(morgenStr);
-      if (isVandaag || isMorgen) {
-        grafiekData.push({
-          tijd: tijdStr.slice(11, 16),
-          watt: w,
-          dag:  isVandaag ? 'vandaag' : 'morgen',
-        });
-      }
-    }
-    grafiekData.sort((a, b) => {
+    const grafiekData = Object.values(uurData).sort((a, b) => {
       const dagOrd = (d) => (d === 'vandaag' ? 0 : 1);
       if (dagOrd(a.dag) !== dagOrd(b.dag)) return dagOrd(a.dag) - dagOrd(b.dag);
       return a.tijd.localeCompare(b.tijd);
     });
 
-    return { vandaagKwh, morgenKwh, vandaagResterendKwh, grafiekData };
+    return {
+      vandaagKwh:          +vandaagKwh.toFixed(2),
+      morgenKwh:           +morgenKwh.toFixed(2),
+      vandaagResterendKwh: +vandaagResterendKwh.toFixed(2),
+      grafiekData,
+    };
   } catch (e) {
-    console.error('Forecast.Solar mislukt:', e.message);
+    console.error('Solcast mislukt:', e.message);
     return null;
   }
 }
