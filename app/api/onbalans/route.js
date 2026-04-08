@@ -125,17 +125,20 @@ export async function GET(request) {
     const tennetSurplus  = huidigTennet ? mwhNaarKwh(parseFloat(huidigTennet.surplus))  : null;
 
     // 3. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
+    // SOC en sensor data apart opvragen: onbalans INSERT heeft geen solar/grid/verbruik
     const sql = getDb();
-    const socRow = await sql`
-      SELECT batterij_pct, solar_w, grid_w, verbruik_w
-      FROM onbalans_log
-      WHERE batterij_pct IS NOT NULL
-      ORDER BY tijdstip DESC LIMIT 1
-    `;
-    const batterijPct = socRow.length > 0 ? parseFloat(socRow[0].batterij_pct)  : null;
-    const solarW      = socRow.length > 0 && socRow[0].solar_w    != null ? Math.round(parseFloat(socRow[0].solar_w))    : null;
-    const gridW       = socRow.length > 0 && socRow[0].grid_w     != null ? Math.round(parseFloat(socRow[0].grid_w))     : null;
-    const verbruikW   = socRow.length > 0 && socRow[0].verbruik_w != null ? Math.round(parseFloat(socRow[0].verbruik_w)) : null;
+    const [socRow, sensorRow] = await Promise.all([
+      sql`SELECT batterij_pct FROM onbalans_log
+          WHERE batterij_pct IS NOT NULL
+          ORDER BY tijdstip DESC LIMIT 1`,
+      sql`SELECT solar_w, grid_w, verbruik_w FROM onbalans_log
+          WHERE solar_w IS NOT NULL
+          ORDER BY tijdstip DESC LIMIT 1`,
+    ]);
+    const batterijPct = socRow.length > 0    ? parseFloat(socRow[0].batterij_pct)           : null;
+    const solarW      = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].solar_w))    : null;
+    const gridW       = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].grid_w))     : null;
+    const verbruikW   = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].verbruik_w)) : null;
 
     // 4. Beslissing bepalen op basis van dagelijkse dynamische drempels
     const { beslissing, reden } = consumerPrijs !== null
