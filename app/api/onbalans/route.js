@@ -241,20 +241,21 @@ export async function GET(request) {
     // 3. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
     // SOC en sensor data apart opvragen: onbalans INSERT heeft geen solar/grid/verbruik
     const sql = getDb();
-    const [socRow, sensorRow] = await Promise.all([
-      sql`SELECT batterij_pct, tijdstip FROM onbalans_log
-          WHERE batterij_pct IS NOT NULL
-          ORDER BY tijdstip DESC LIMIT 1`,
-      sql`SELECT solar_w, grid_w, verbruik_w, tijdstip FROM onbalans_log
-          WHERE solar_w IS NOT NULL
-          ORDER BY tijdstip DESC LIMIT 1`,
-    ]);
-    const batterijPct    = socRow.length > 0    ? parseFloat(socRow[0].batterij_pct)           : null;
-    const socTijdstip    = socRow.length > 0    ? socRow[0].tijdstip                           : null;
-    const solarW         = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].solar_w))    : null;
-    const gridW          = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].grid_w))     : null;
-    const verbruikW      = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].verbruik_w)) : null;
-    const sensorTijdstip = sensorRow.length > 0 ? sensorRow[0].tijdstip                          : null;
+    // Node-RED rijen hebben altijd solar_w IS NOT NULL — zo onderscheiden we ze van
+    // de beslissings-INSERT (die heeft alleen prijs_kwh/beslissing, geen sensordata).
+    const sensorRow = await sql`
+      SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
+      FROM onbalans_log
+      WHERE solar_w IS NOT NULL
+      ORDER BY tijdstip DESC
+      LIMIT 1
+    `;
+    const r            = sensorRow[0] ?? null;
+    const batterijPct  = r ? parseFloat(r.batterij_pct) : null;
+    const solarW       = r ? Math.round(parseFloat(r.solar_w))    : null;
+    const gridW        = r ? Math.round(parseFloat(r.grid_w))     : null;
+    const verbruikW    = r ? Math.round(parseFloat(r.verbruik_w)) : null;
+    const socTijdstip  = r ? r.tijdstip                           : null;
 
     // 4. Beslissing bepalen (prijs + zonprognose)
     const zonResterendKwh = zonPrognose?.vandaagResterendKwh ?? null;
@@ -262,10 +263,11 @@ export async function GET(request) {
       ? bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
 
-    // 5. Opslaan in database (consumer prijs)
+    // 5. Opslaan in database — alleen prijs + beslissing (geen batterij_pct, want
+    //    dat hoort bij Node-RED rijen; anders vond de SOC-query deze rij als nieuwste)
     await sql`
-      INSERT INTO onbalans_log (tijdstip, prijs_kwh, beslissing, batterij_pct)
-      VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing}, ${batterijPct})
+      INSERT INTO onbalans_log (tijdstip, prijs_kwh, beslissing)
+      VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing})
     `;
 
     // 6. Alle prijzen van vandaag voor grafiek
@@ -291,8 +293,7 @@ export async function GET(request) {
       solarW,
       gridW,
       verbruikW,
-      socTijdstip:    socTijdstip    ? new Date(socTijdstip).toISOString()    : null,
-      sensorTijdstip: sensorTijdstip ? new Date(sensorTijdstip).toISOString() : null,
+      socTijdstip: socTijdstip ? new Date(socTijdstip).toISOString() : null,
       beslissing,
       reden,
       tennet: tennetShortage !== null ? {
