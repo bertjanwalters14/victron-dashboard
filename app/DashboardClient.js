@@ -505,7 +505,7 @@ function ZonPrognose({ zon }) {
         </div>
       </div>
 
-      <p className="text-xs text-gray-600">📍 Harkstede · 18 × 370Wp · Zuid 0° · 35° helling · Forecast.Solar</p>
+      <p className="text-xs text-gray-600">📍 Harkstede · 18 × 370Wp · Zuid 180° · 35° helling · Forecast.Solar</p>
     </div>
   );
 }
