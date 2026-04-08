@@ -158,6 +158,15 @@ function wattLabel(w) {
   return abs >= 1000 ? `${(abs / 1000).toFixed(1)} kW` : `${abs} W`;
 }
 
+function minsGeleden(iso) {
+  if (!iso) return '';
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (diff < 1)  return '< 1 min geleden';
+  if (diff === 1) return '1 min geleden';
+  if (diff < 60) return `${diff} min geleden`;
+  return `${Math.floor(diff / 60)}u geleden`;
+}
+
 function OnbalansTegel() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -245,6 +254,11 @@ function OnbalansTegel() {
             {data?.batterijPct != null ? `${data.batterijPct}%` : '—'}
           </p>
           <p className="text-gray-600 text-xs mt-0.5">{battRichting}</p>
+          {data?.socTijdstip && (
+            <p className="text-gray-600 text-xs mt-0.5" title={data.socTijdstip}>
+              {minsGeleden(data.socTijdstip)}
+            </p>
+          )}
         </div>
       </div>
 

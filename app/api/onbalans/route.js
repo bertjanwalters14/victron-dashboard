@@ -1,5 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 
+export const dynamic = 'force-dynamic'; // nooit cachen op Vercel
+
 function getDb() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL niet ingesteld');
@@ -240,17 +242,19 @@ export async function GET(request) {
     // SOC en sensor data apart opvragen: onbalans INSERT heeft geen solar/grid/verbruik
     const sql = getDb();
     const [socRow, sensorRow] = await Promise.all([
-      sql`SELECT batterij_pct FROM onbalans_log
+      sql`SELECT batterij_pct, tijdstip FROM onbalans_log
           WHERE batterij_pct IS NOT NULL
           ORDER BY tijdstip DESC LIMIT 1`,
-      sql`SELECT solar_w, grid_w, verbruik_w FROM onbalans_log
+      sql`SELECT solar_w, grid_w, verbruik_w, tijdstip FROM onbalans_log
           WHERE solar_w IS NOT NULL
           ORDER BY tijdstip DESC LIMIT 1`,
     ]);
-    const batterijPct = socRow.length > 0    ? parseFloat(socRow[0].batterij_pct)           : null;
-    const solarW      = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].solar_w))    : null;
-    const gridW       = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].grid_w))     : null;
-    const verbruikW   = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].verbruik_w)) : null;
+    const batterijPct    = socRow.length > 0    ? parseFloat(socRow[0].batterij_pct)           : null;
+    const socTijdstip    = socRow.length > 0    ? socRow[0].tijdstip                           : null;
+    const solarW         = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].solar_w))    : null;
+    const gridW          = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].grid_w))     : null;
+    const verbruikW      = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].verbruik_w)) : null;
+    const sensorTijdstip = sensorRow.length > 0 ? sensorRow[0].tijdstip                          : null;
 
     // 4. Beslissing bepalen (prijs + zonprognose)
     const zonResterendKwh = zonPrognose?.vandaagResterendKwh ?? null;
@@ -287,6 +291,8 @@ export async function GET(request) {
       solarW,
       gridW,
       verbruikW,
+      socTijdstip:    socTijdstip    ? new Date(socTijdstip).toISOString()    : null,
+      sensorTijdstip: sensorTijdstip ? new Date(sensorTijdstip).toISOString() : null,
       beslissing,
       reden,
       tennet: tennetShortage !== null ? {
