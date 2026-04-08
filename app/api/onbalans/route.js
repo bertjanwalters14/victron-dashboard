@@ -9,16 +9,18 @@ function getDb() {
 const BAT_MIN_PCT        = 10;
 const BAT_MAX_PCT        = 90;
 
-// Frank Energie: priceIncludingMarkup is ex BTW → nog × 1.21
-const BTW_FACTOR = 1.21;
-
 // Dynamische drempels: percentiel van de dagprijzen
-const PERCENTIEL_LADEN    = 25; // goedkoopste 25% van de dag → laden
-const PERCENTIEL_ONTLADEN = 75; // duurste 25% van de dag → ontladen
-const VLOER_ONTLADEN      = 0.20; // nooit ontladen onder €0.20 consumentenprijs
+const PERCENTIEL_LADEN    = 25;
+const PERCENTIEL_ONTLADEN = 75;
+const VLOER_ONTLADEN      = 0.20;
 
-function frankNaarConsumer(priceIncludingMarkup) {
-  return priceIncludingMarkup * BTW_FACTOR;
+// Frank Energie consumentenprijs = spot + BTW op spot + opslag + energiebelasting
+// (sourcingMarkupPrice en energyTaxPrice zijn al incl BTW)
+function frankNaarConsumer(p) {
+  return parseFloat(p.marketPrice)
+    + parseFloat(p.marketPriceTax)
+    + parseFloat(p.sourcingMarkupPrice)
+    + parseFloat(p.energyTaxPrice);
 }
 
 async function haalFrankEnergiePrijzen(vandaag) {
@@ -27,7 +29,7 @@ async function haalFrankEnergiePrijzen(vandaag) {
   morgen.setUTCDate(morgen.getUTCDate() + 1);
   const morgenStr = morgen.toISOString().split('T')[0];
 
-  const res = await fetch('https://frank-graphql-prod.graphcdn.app/', {
+  const res = await fetch('https://graphql.frankenergie.nl/', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -36,7 +38,9 @@ async function haalFrankEnergiePrijzen(vandaag) {
           from
           till
           marketPrice
-          priceIncludingMarkup
+          marketPriceTax
+          sourcingMarkupPrice
+          energyTaxPrice
         }
       }`,
     }),
@@ -143,11 +147,11 @@ export async function GET(request) {
       return van <= nu && tot > nu;
     }) || frankPrijzen[frankPrijzen.length - 1];
 
-    const spotPrijs     = huidigUur ? parseFloat(huidigUur.marketPrice)            : null;
-    const consumerPrijs = huidigUur ? frankNaarConsumer(parseFloat(huidigUur.priceIncludingMarkup)) : null;
+    const spotPrijs     = huidigUur ? parseFloat(huidigUur.marketPrice) : null;
+    const consumerPrijs = huidigUur ? frankNaarConsumer(huidigUur)      : null;
 
     // Dynamische drempels berekenen op basis van vandaag
-    const consumerPrijzenVandaag = frankPrijzen.map(p => frankNaarConsumer(parseFloat(p.priceIncludingMarkup)));
+    const consumerPrijzenVandaag = frankPrijzen.map(p => frankNaarConsumer(p));
     const { laadDrempel, ontlaadDrempel } = berekenDrempels(consumerPrijzenVandaag);
 
     // 2. TenneT onbalansprijzen ophalen (aanvullende info)
@@ -191,7 +195,7 @@ export async function GET(request) {
     // 6. Alle prijzen van vandaag voor grafiek
     const allePrijzen = frankPrijzen.map(p => ({
       tijd:  new Date(p.from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
-      prijs: +frankNaarConsumer(parseFloat(p.priceIncludingMarkup)).toFixed(4),
+      prijs: +frankNaarConsumer(p).toFixed(4),
       spot:  +parseFloat(p.marketPrice).toFixed(4),
     }));
 
