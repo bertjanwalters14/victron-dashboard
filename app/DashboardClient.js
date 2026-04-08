@@ -60,7 +60,7 @@ export default function DashboardClient({ data }) {
             <span className="text-xs text-gray-500">op basis van {aantalDagenData} dag{aantalDagenData !== 1 ? 'en' : ''} data</span>
             <InfoIcon text={INFO.projectie} />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <ProjectieCard label="Per maand"       value={`€${maandProjectie.toFixed(0)}`} sub="geschatte maandwinst" color="text-emerald-400" />
             <ProjectieCard label="Per jaar"         value={`€${jaarProjectie.toFixed(0)}`}  sub="geschatte jaarwinst" color="text-teal-400" />
             <ProjectieCard
@@ -300,7 +300,7 @@ function OnbalansTegel() {
 
       {/* ── TenneT (indien beschikbaar) ── */}
       {data?.tennet && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="bg-gray-700 rounded-lg p-3 text-center">
             <p className="text-gray-500 text-xs mb-1">TenneT tekort</p>
             <p className="text-xl font-bold text-orange-400">€{data.tennet.shortage.toFixed(4)}</p>
@@ -540,10 +540,10 @@ function BatterijRealisatie() {
               <th className="text-left py-2 pr-4">Dag</th>
               <th className="text-right py-2 px-3">Geladen</th>
               <th className="text-right py-2 px-3">Ontladen</th>
-              <th className="text-right py-2 px-3">Zon</th>
-              <th className="text-right py-2 px-3">Van net</th>
-              <th className="text-right py-2 px-3">Teruggeleverd</th>
-              <th className="text-right py-2 px-3">Beslissingen</th>
+              <th className="text-right py-2 px-3 hidden md:table-cell">Zon</th>
+              <th className="text-right py-2 px-3 hidden md:table-cell">Van net</th>
+              <th className="text-right py-2 px-3 hidden sm:table-cell">Teruggeleverd</th>
+              <th className="text-right py-2 px-3 hidden lg:table-cell">Beslissingen</th>
               <th className="text-right py-2 pl-3">Netto</th>
             </tr>
           </thead>
@@ -558,10 +558,10 @@ function BatterijRealisatie() {
                   <td className="py-2 pr-4 text-gray-300 font-medium">{d.dag.slice(5)}</td>
                   <td className="py-2 px-3 text-right text-green-400">{d.kwh_geladen > 0 ? `${d.kwh_geladen} kWh` : '—'}</td>
                   <td className="py-2 px-3 text-right text-red-400">{d.kwh_ontladen > 0 ? `${d.kwh_ontladen} kWh` : '—'}</td>
-                  <td className="py-2 px-3 text-right text-yellow-400">{d.kwh_zon > 0 ? `${d.kwh_zon} kWh` : '—'}</td>
-                  <td className="py-2 px-3 text-right text-blue-400">{d.kwh_van_net > 0 ? `${d.kwh_van_net} kWh` : '—'}</td>
-                  <td className="py-2 px-3 text-right text-purple-400">{d.kwh_teruggeleverd > 0 ? `${d.kwh_teruggeleverd} kWh` : '—'}</td>
-                  <td className="py-2 px-3 text-right text-gray-400 text-xs">
+                  <td className="py-2 px-3 text-right text-yellow-400 hidden md:table-cell">{d.kwh_zon > 0 ? `${d.kwh_zon} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-blue-400 hidden md:table-cell">{d.kwh_van_net > 0 ? `${d.kwh_van_net} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-purple-400 hidden sm:table-cell">{d.kwh_teruggeleverd > 0 ? `${d.kwh_teruggeleverd} kWh` : '—'}</td>
+                  <td className="py-2 px-3 text-right text-gray-400 text-xs hidden lg:table-cell">
                     <span className="text-green-500">{ladenAantal}L</span>
                     {' · '}
                     <span className="text-red-500">{ontladenAantal}O</span>
