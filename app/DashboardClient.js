@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, ReferenceArea } from 'recharts';
 
 const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-03');
@@ -304,12 +304,33 @@ function OnbalansTegel() {
       {/* ── Prijsgrafiek ── */}
       {data?.prijzenVandaag?.length > 0 && (
         <div>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">
-            Prijzen vandaag (incl. BTW + opslag)
-          </p>
-          <ResponsiveContainer width="100%" height={180}>
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+              Prijzen vandaag (incl. BTW + opslag)
+            </p>
+            <div className="flex gap-3 text-xs text-gray-500">
+              <span><span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-800 mr-1"/>laden van net</span>
+              <span><span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-800 mr-1"/>zon laadt</span>
+              <span><span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-900 mr-1"/>ontladen</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={190}>
             <LineChart data={data.prijzenVandaag}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#1F2937" />
+
+              {/* Gekleurde achtergrond per uur op basis van zone */}
+              {data.prijzenVandaag.map((p, i) => {
+                const next = data.prijzenVandaag[i + 1];
+                if (!next || p.zone === 'wachten') return null;
+                const fill = p.zone === 'ontladen' ? '#7f1d1d'
+                  : p.zone === 'zon'    ? '#78350f'
+                  : '#14532d'; // laden
+                return (
+                  <ReferenceArea key={i} x1={p.tijd} x2={next.tijd}
+                    fill={fill} fillOpacity={0.35} stroke="none" />
+                );
+              })}
+
               <XAxis dataKey="tijd" tick={{ fontSize: 10, fill: '#6B7280' }} interval={3} />
               <YAxis
                 tick={{ fontSize: 10, fill: '#6B7280' }}
@@ -324,16 +345,24 @@ function OnbalansTegel() {
                 formatter={(v, name) => [`€${v.toFixed(4)}`, name === 'prijs' ? 'Consumentenprijs' : 'Spot']}
                 contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px', fontSize: 12 }}
                 labelStyle={{ color: '#9CA3AF' }}
+                labelFormatter={(label) => {
+                  const p = data.prijzenVandaag.find(x => x.tijd === label);
+                  const zoneLabel = p?.zone === 'ontladen' ? '🔴 ontladen'
+                    : p?.zone === 'laden' ? '🟢 laden van net'
+                    : p?.zone === 'zon'   ? '☀️ zon laadt'
+                    : '🟠 wachten';
+                  return `${label}  ${zoneLabel}`;
+                }}
               />
-              <ReferenceLine y={data.drempels?.ontladen} stroke="#10B981" strokeDasharray="5 3"
-                label={{ value: `ontladen €${data.drempels?.ontladen?.toFixed(3)}`, fill: '#10B981', fontSize: 9, position: 'insideTopRight' }} />
-              <ReferenceLine y={data.drempels?.laden} stroke="#3B82F6" strokeDasharray="5 3"
-                label={{ value: `laden €${data.drempels?.laden?.toFixed(3)}`, fill: '#3B82F6', fontSize: 9, position: 'insideBottomRight' }} />
+              <ReferenceLine y={data.drempels?.ontladen} stroke="#ef4444" strokeDasharray="5 3" strokeOpacity={0.6}
+                label={{ value: `€${data.drempels?.ontladen?.toFixed(3)}`, fill: '#ef4444', fontSize: 9, position: 'insideTopRight' }} />
+              <ReferenceLine y={data.drempels?.laden} stroke="#22c55e" strokeDasharray="5 3" strokeOpacity={0.6}
+                label={{ value: `€${data.drempels?.laden?.toFixed(3)}`, fill: '#22c55e', fontSize: 9, position: 'insideBottomRight' }} />
               {data.huidigeTijd && (
                 <ReferenceLine x={data.huidigeTijd} stroke="#F59E0B" strokeWidth={2}
                   label={{ value: 'nu', fill: '#F59E0B', fontSize: 10, position: 'insideTopLeft' }} />
               )}
-              <Line type="monotone" dataKey="prijs" stroke="#60A5FA" dot={false} strokeWidth={2.5} />
+              <Line type="monotone" dataKey="prijs" stroke="#93c5fd" dot={false} strokeWidth={2.5} />
             </LineChart>
           </ResponsiveContainer>
         </div>

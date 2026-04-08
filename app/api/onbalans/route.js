@@ -270,12 +270,37 @@ export async function GET(request) {
       VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing})
     `;
 
-    // 6. Alle prijzen van vandaag voor grafiek
-    const allePrijzen = frankPrijzen.map(p => ({
-      tijd:  new Date(p.from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }),
-      prijs: +frankNaarConsumer(p).toFixed(4),
-      spot:  +parseFloat(p.marketPrice).toFixed(4),
-    }));
+    // 6. Alle prijzen van vandaag voor grafiek — incl. zone per uur
+    // Bouw een snelle lookup: tijdlabel → verwacht zonnewatt (voor zon-override markering)
+    const zonWattPerTijd = {};
+    if (zonPrognose?.grafiekData) {
+      for (const { tijd, watt, dag } of zonPrognose.grafiekData) {
+        if (dag === 'vandaag') zonWattPerTijd[tijd] = watt;
+      }
+    }
+
+    const allePrijzen = frankPrijzen.map(p => {
+      const consP = frankNaarConsumer(p);
+      const tijdLabel = new Date(p.from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' });
+      const zonWatt = zonWattPerTijd[tijdLabel] ?? 0;
+
+      let zone;
+      if (consP >= ontlaadDrempel) {
+        zone = 'ontladen';
+      } else if (consP <= laadDrempel) {
+        // Zon-override: als er dat uur >500W zon verwacht wordt, laden we toch niet van het net
+        zone = zonWatt > 500 ? 'zon' : 'laden';
+      } else {
+        zone = 'wachten';
+      }
+
+      return {
+        tijd:  tijdLabel,
+        prijs: +consP.toFixed(4),
+        spot:  +parseFloat(p.marketPrice).toFixed(4),
+        zone,
+      };
+    });
 
     // Exacte tijd-label van het huidige uur (matcht altijd met grafiekdata)
     const huidigeTijd = huidigUur
