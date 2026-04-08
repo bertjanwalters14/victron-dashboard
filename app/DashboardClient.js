@@ -230,6 +230,22 @@ function OnbalansTegel() {
         ))}
       </div>
 
+      {/* TenneT onbalansprijzen */}
+      {data?.tennet && (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="bg-gray-700 rounded-lg p-3 text-center">
+            <p className="text-gray-500 text-xs mb-1">TenneT shortage</p>
+            <p className="text-lg font-bold text-orange-400">€{data.tennet.shortage.toFixed(4)}</p>
+            <p className="text-gray-600 text-xs">grid tekort → verkoop prijs</p>
+          </div>
+          <div className="bg-gray-700 rounded-lg p-3 text-center">
+            <p className="text-gray-500 text-xs mb-1">TenneT surplus</p>
+            <p className="text-lg font-bold text-cyan-400">€{data.tennet.surplus.toFixed(4)}</p>
+            <p className="text-gray-600 text-xs">grid overschot → inkoop prijs</p>
+          </div>
+        </div>
+      )}
+
       {/* Prijsgrafiek vandaag */}
       {data?.prijzenVandaag?.length > 0 && (
         <div>
@@ -238,7 +254,14 @@ function OnbalansTegel() {
             <LineChart data={data.prijzenVandaag}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="tijd" tick={{ fontSize: 9, fill: '#9CA3AF' }} interval={3} />
-              <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} tickFormatter={v => `€${v.toFixed(2)}`} />
+              <YAxis
+                tick={{ fontSize: 9, fill: '#9CA3AF' }}
+                tickFormatter={v => `€${v.toFixed(2)}`}
+                domain={[
+                  dataMin => Math.min(dataMin, data.drempels?.laden ?? 0.05) - 0.02,
+                  dataMax => Math.max(dataMax, data.drempels?.ontladen ?? 0.25) + 0.02,
+                ]}
+              />
               <Tooltip
                 formatter={(v, name) => [`€${v.toFixed(4)}`, name === 'prijs' ? 'Consumentenprijs' : 'EPEX spot']}
                 contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
@@ -246,7 +269,13 @@ function OnbalansTegel() {
               />
               <ReferenceLine y={data.drempels?.ontladen ?? 0.25} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'ontladen', fill: '#10B981', fontSize: 8, position: 'insideTopRight' }} />
               <ReferenceLine y={data.drempels?.laden ?? 0.05} stroke="#3B82F6" strokeDasharray="4 4" label={{ value: 'laden', fill: '#3B82F6', fontSize: 8, position: 'insideBottomRight' }} />
-              {nu && <ReferenceLine x={nu} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'nu', fill: '#F59E0B', fontSize: 8 }} />}
+              {nu && (() => {
+                // Afronden naar dichtstbijzijnde 15 min om te matchen met grafiekdata
+                const [h, m] = nu.split(':').map(Number);
+                const mm = Math.floor(m / 15) * 15;
+                const nuGerond = `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+                return <ReferenceLine x={nuGerond} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'nu', fill: '#F59E0B', fontSize: 8 }} />;
+              })()}
               <Line type="monotone" dataKey="prijs" stroke="#60A5FA" dot={false} strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
