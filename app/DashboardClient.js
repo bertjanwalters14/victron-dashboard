@@ -191,142 +191,160 @@ function OnbalansTegel() {
     : beslissing === 'laden' ? 'text-blue-400'
     : beslissing === 'stop'  ? 'text-red-400'
     : 'text-yellow-400';
-  const bgKleur = beslissing === 'ontladen' ? 'from-green-900 to-emerald-800'
-    : beslissing === 'laden' ? 'from-blue-900 to-blue-800'
-    : beslissing === 'stop'  ? 'from-red-900 to-red-800'
-    : 'from-gray-800 to-gray-700';
+  const bgKleur = beslissing === 'ontladen' ? 'from-green-950 to-emerald-900 border border-green-800'
+    : beslissing === 'laden' ? 'from-blue-950 to-blue-900 border border-blue-800'
+    : beslissing === 'stop'  ? 'from-red-950 to-red-900 border border-red-800'
+    : 'from-gray-750 to-gray-800 border border-gray-700';
   const emoji = beslissing === 'ontladen' ? '🟢'
     : beslissing === 'laden' ? '🔵'
     : beslissing === 'stop'  ? '🔴' : '🟡';
 
-  // Batterij richting berekenen uit energiebalans
-  const battPower = (data?.solarW ?? 0) + (data?.gridW ?? 0) - (data?.verbruikW ?? 0);
-  const battRichting = battPower > 150 ? '↑ laden' : battPower < -150 ? '↓ ontladen' : '— standby';
+  const battPower    = (data?.solarW ?? 0) + (data?.gridW ?? 0) - (data?.verbruikW ?? 0);
+  const battRichting = battPower > 150 ? '↑ laden' : battPower < -150 ? '↓ ontladen' : 'standby';
   const battKleur    = battPower > 150 ? 'text-green-400' : battPower < -150 ? 'text-orange-400' : 'text-gray-400';
   const gridImport   = (data?.gridW ?? 0) >= 0;
 
   return (
-    <div className="bg-gray-800 rounded-xl p-5 mb-6">
-      <h2 className="font-semibold text-gray-200 mb-4">⚡ Markt & Beslissing</h2>
+    <div className="bg-gray-800 rounded-xl p-5 mb-6 space-y-5">
+      <h2 className="font-semibold text-gray-100 text-lg">⚡ Markt &amp; Energieflow</h2>
 
-      {/* Advies + prijs */}
-      <div className={`bg-gradient-to-r ${bgKleur} rounded-xl p-4 mb-4 flex justify-between items-center`}>
+      {/* ── Adviesblok ── */}
+      <div className={`bg-gradient-to-r ${bgKleur} rounded-xl p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3`}>
         <div>
-          <p className="text-gray-300 text-xs font-medium mb-1">Huidig advies (simulatie)</p>
-          <p className={`text-3xl font-bold ${adviesKleur}`}>
-            {loading ? '...' : `${emoji} ${beslissing?.toUpperCase() ?? '—'}`}
+          <p className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">Huidig advies · simulatie</p>
+          <p className={`text-3xl font-extrabold tracking-tight ${adviesKleur}`}>
+            {loading ? '…' : `${emoji} ${beslissing?.toUpperCase() ?? '—'}`}
           </p>
-          <p className="text-gray-400 text-xs mt-1">{data?.reden ?? ''}</p>
+          <p className="text-gray-400 text-sm mt-1 leading-snug max-w-xs">{data?.reden ?? ''}</p>
         </div>
-        <div className="text-right">
-          <p className="text-gray-400 text-xs">Consumentenprijs</p>
-          <p className="text-2xl font-bold text-white mt-0.5">
-            {data?.prijs != null ? `€${data.prijs.toFixed(4)}` : '—'}
+        <div className="sm:text-right shrink-0">
+          <p className="text-gray-500 text-xs uppercase tracking-wide">Consumentenprijs nu</p>
+          <p className="text-3xl font-bold text-white mt-0.5">
+            {data?.prijs != null ? `€\u00A0${data.prijs.toFixed(4)}` : '—'}
           </p>
-          <p className="text-gray-500 text-xs mt-0.5">
-            EPEX spot: {data?.spotprijs != null ? `€${data.spotprijs.toFixed(4)}` : '—'}
+          <p className="text-gray-500 text-xs mt-1">
+            EPEX spot&nbsp;
+            <span className="text-gray-300">{data?.spotprijs != null ? `€\u00A0${data.spotprijs.toFixed(4)}` : '—'}</span>
+            &ensp;·&ensp;{data?.prijsBron ?? ''}
           </p>
         </div>
       </div>
 
-      {/* Live energieflow */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
-        <div className="bg-gray-700 rounded-lg p-3 text-center">
-          <p className="text-gray-500 text-xs mb-1">☀️ Zon</p>
-          <p className="text-lg font-bold text-amber-400">{wattLabel(data?.solarW)}</p>
-          <p className="text-gray-600 text-xs mt-0.5">productie</p>
-        </div>
-        <div className="bg-gray-700 rounded-lg p-3 text-center">
-          <p className="text-gray-500 text-xs mb-1">🏠 Huis</p>
-          <p className="text-lg font-bold text-white">{wattLabel(data?.verbruikW)}</p>
-          <p className="text-gray-600 text-xs mt-0.5">verbruik</p>
-        </div>
-        <div className="bg-gray-700 rounded-lg p-3 text-center">
-          <p className="text-gray-500 text-xs mb-1">⚡ Net</p>
-          <p className={`text-lg font-bold ${gridImport ? 'text-red-400' : 'text-green-400'}`}>
-            {wattLabel(data?.gridW)}
-          </p>
-          <p className="text-gray-600 text-xs mt-0.5">{gridImport ? 'import' : 'export'}</p>
-        </div>
-        <div className="bg-gray-700 rounded-lg p-3 text-center">
-          <p className="text-gray-500 text-xs mb-1">🔋 Batterij</p>
-          <p className={`text-lg font-bold ${battKleur}`}>
-            {data?.batterijPct != null ? `${data.batterijPct}%` : '—'}
-          </p>
-          <p className="text-gray-600 text-xs mt-0.5">{battRichting}</p>
-          {data?.socTijdstip && (
-            <p className="text-gray-600 text-xs mt-0.5" title={data.socTijdstip}>
-              {minsGeleden(data.socTijdstip)}
-            </p>
-          )}
+      {/* ── Live energieflow ── */}
+      <div>
+        <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">Live energieflow</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <FlowCard icon="☀️" label="Zon"     value={wattLabel(data?.solarW)}   sub="productie"                         kleur="text-amber-400" />
+          <FlowCard icon="🏠" label="Huis"    value={wattLabel(data?.verbruikW)} sub="verbruik"                          kleur="text-white" />
+          <FlowCard icon="🔌" label="Net"     value={wattLabel(data?.gridW)}     sub={gridImport ? 'import ↓' : 'export ↑'} kleur={gridImport ? 'text-red-400' : 'text-green-400'} />
+          <FlowCard
+            icon="🔋" label="Batterij"
+            value={data?.batterijPct != null ? `${data.batterijPct}%` : '—'}
+            sub={battRichting}
+            kleur={battKleur}
+            badge={data?.socTijdstip ? minsGeleden(data.socTijdstip) : null}
+          />
         </div>
       </div>
 
-      {/* Drempels compact */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mb-4 px-1">
-        <span>Ontladen boven <span className="text-green-400 font-medium">
-          {data?.drempels?.ontladen != null ? `€${data.drempels.ontladen.toFixed(4)}` : '—'}
-        </span> (p{data?.drempels?.percentiel?.ontladen ?? 75})</span>
-        <span>·</span>
-        <span>Laden onder <span className="text-blue-400 font-medium">
-          {data?.drempels?.laden != null ? `€${data.drempels.laden.toFixed(4)}` : '—'}
-        </span> (p{data?.drempels?.percentiel?.laden ?? 25})</span>
-        <span>·</span>
-        <span>Bat <span className="text-red-400 font-medium">{data?.drempels?.batMin ?? 10}%</span>–<span className="text-yellow-400 font-medium">{data?.drempels?.batMax ?? 90}%</span></span>
+      {/* ── Drempels ── */}
+      <div className="bg-gray-750 rounded-lg px-4 py-3 flex flex-wrap gap-x-5 gap-y-1.5 text-sm border border-gray-700">
+        <span className="text-gray-400">
+          Ontladen boven&nbsp;
+          <span className="text-green-400 font-semibold">
+            {data?.drempels?.ontladen != null ? `€${data.drempels.ontladen.toFixed(4)}` : '—'}
+          </span>
+          <span className="text-gray-600 text-xs ml-1">(p{data?.drempels?.percentiel?.ontladen ?? 75})</span>
+        </span>
+        <span className="text-gray-600 hidden sm:inline">|</span>
+        <span className="text-gray-400">
+          Laden onder&nbsp;
+          <span className="text-blue-400 font-semibold">
+            {data?.drempels?.laden != null ? `€${data.drempels.laden.toFixed(4)}` : '—'}
+          </span>
+          <span className="text-gray-600 text-xs ml-1">(p{data?.drempels?.percentiel?.laden ?? 25})</span>
+        </span>
+        <span className="text-gray-600 hidden sm:inline">|</span>
+        <span className="text-gray-400">
+          Batterijgrens&nbsp;
+          <span className="text-red-400 font-semibold">{data?.drempels?.batMin ?? 10}%</span>
+          &nbsp;–&nbsp;
+          <span className="text-yellow-400 font-semibold">{data?.drempels?.batMax ?? 90}%</span>
+        </span>
       </div>
 
-      {/* TenneT */}
+      {/* ── TenneT (indien beschikbaar) ── */}
       {data?.tennet && (
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-2 gap-3">
           <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-gray-500 text-xs mb-1">TenneT shortage</p>
-            <p className="text-lg font-bold text-orange-400">€{data.tennet.shortage.toFixed(4)}</p>
-            <p className="text-gray-600 text-xs">grid tekort → verkoopprijs</p>
+            <p className="text-gray-500 text-xs mb-1">TenneT tekort</p>
+            <p className="text-xl font-bold text-orange-400">€{data.tennet.shortage.toFixed(4)}</p>
+            <p className="text-gray-500 text-xs mt-0.5">verkoopprijs onbalans</p>
           </div>
           <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-gray-500 text-xs mb-1">TenneT surplus</p>
-            <p className="text-lg font-bold text-cyan-400">€{data.tennet.surplus.toFixed(4)}</p>
-            <p className="text-gray-600 text-xs">grid overschot → inkoopprijs</p>
+            <p className="text-gray-500 text-xs mb-1">TenneT overschot</p>
+            <p className="text-xl font-bold text-cyan-400">€{data.tennet.surplus.toFixed(4)}</p>
+            <p className="text-gray-500 text-xs mt-0.5">inkoopprijs onbalans</p>
           </div>
         </div>
       )}
 
-      {/* Prijsgrafiek */}
+      {/* ── Prijsgrafiek ── */}
       {data?.prijzenVandaag?.length > 0 && (
         <div>
-          <p className="text-xs text-gray-500 mb-2">Prijzen vandaag (incl. BTW + opslag)</p>
-          <ResponsiveContainer width="100%" height={160}>
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-2">
+            Prijzen vandaag (incl. BTW + opslag)
+          </p>
+          <ResponsiveContainer width="100%" height={180}>
             <LineChart data={data.prijzenVandaag}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="tijd" tick={{ fontSize: 9, fill: '#9CA3AF' }} interval={3} />
+              <XAxis dataKey="tijd" tick={{ fontSize: 10, fill: '#6B7280' }} interval={3} />
               <YAxis
-                tick={{ fontSize: 9, fill: '#9CA3AF' }}
+                tick={{ fontSize: 10, fill: '#6B7280' }}
                 tickFormatter={v => `€${v.toFixed(2)}`}
+                width={46}
                 domain={[
-                  dataMin => Math.min(dataMin, data.drempels?.laden  ?? 0.05) - 0.02,
-                  dataMax => Math.max(dataMax, data.drempels?.ontladen ?? 0.25) + 0.02,
+                  dataMin => +(Math.min(dataMin, data.drempels?.laden  ?? 0.05) - 0.02).toFixed(2),
+                  dataMax => +(Math.max(dataMax, data.drempels?.ontladen ?? 0.25) + 0.02).toFixed(2),
                 ]}
               />
               <Tooltip
-                formatter={v => [`€${v.toFixed(4)}`, 'Consumentenprijs']}
-                contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
+                formatter={(v, name) => [`€${v.toFixed(4)}`, name === 'prijs' ? 'Consumentenprijs' : 'Spot']}
+                contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px', fontSize: 12 }}
                 labelStyle={{ color: '#9CA3AF' }}
               />
-              <ReferenceLine y={data.drempels?.ontladen} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'ontladen', fill: '#10B981', fontSize: 8, position: 'insideTopRight' }} />
-              <ReferenceLine y={data.drempels?.laden}    stroke="#3B82F6" strokeDasharray="4 4" label={{ value: 'laden',    fill: '#3B82F6', fontSize: 8, position: 'insideBottomRight' }} />
+              <ReferenceLine y={data.drempels?.ontladen} stroke="#10B981" strokeDasharray="5 3"
+                label={{ value: `ontladen €${data.drempels?.ontladen?.toFixed(3)}`, fill: '#10B981', fontSize: 9, position: 'insideTopRight' }} />
+              <ReferenceLine y={data.drempels?.laden} stroke="#3B82F6" strokeDasharray="5 3"
+                label={{ value: `laden €${data.drempels?.laden?.toFixed(3)}`, fill: '#3B82F6', fontSize: 9, position: 'insideBottomRight' }} />
               {data.huidigeTijd && (
-                <ReferenceLine x={data.huidigeTijd} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: 'nu', fill: '#F59E0B', fontSize: 8 }} />
+                <ReferenceLine x={data.huidigeTijd} stroke="#F59E0B" strokeWidth={2}
+                  label={{ value: 'nu', fill: '#F59E0B', fontSize: 10, position: 'insideTopLeft' }} />
               )}
-              <Line type="monotone" dataKey="prijs" stroke="#60A5FA" dot={false} strokeWidth={2} />
+              <Line type="monotone" dataKey="prijs" stroke="#60A5FA" dot={false} strokeWidth={2.5} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      {/* Zonneprognose */}
+      {/* ── Zonneprognose ── */}
       <ZonPrognose zon={data?.zonPrognose} />
 
-      <p className="text-xs text-gray-600 mt-3">Ververst elke minuut · DESS blijft actief · alleen simulatie</p>
+      <p className="text-xs text-gray-600 pt-1 border-t border-gray-700">
+        Ververst elke minuut&ensp;·&ensp;DESS actief (simulatie)&ensp;·&ensp;
+        {data?.tijdstip ? `API ${minsGeleden(data.tijdstip)}` : ''}
+      </p>
+    </div>
+  );
+}
+
+function FlowCard({ icon, label, value, sub, kleur, badge }) {
+  return (
+    <div className="bg-gray-700 rounded-xl p-3 text-center">
+      <p className="text-gray-500 text-xs mb-1">{icon} {label}</p>
+      <p className={`text-xl font-bold ${kleur}`}>{value}</p>
+      <p className="text-gray-500 text-xs mt-0.5">{sub}</p>
+      {badge && <p className="text-gray-600 text-xs mt-0.5">{badge}</p>}
     </div>
   );
 }
@@ -334,60 +352,67 @@ function OnbalansTegel() {
 function ZonPrognose({ zon }) {
   if (!zon) return null;
 
-  // Splits in vandaag en morgen voor kleur-codering
   const vandaagData = (zon.grafiekData || []).filter(d => d.dag === 'vandaag');
   const morgenData  = (zon.grafiekData || []).filter(d => d.dag === 'morgen');
 
-  // Gecombineerde grafiek: vandaag blauw, morgen geel met visuele scheiding
-  const grafiek = [
-    ...vandaagData,
-    ...(morgenData.length > 0 ? [{ tijd: '—', watt: 0, dag: 'scheiding' }] : []),
-    ...morgenData,
-  ];
+  const chartProps = {
+    barCategoryGap: '15%',
+    margin: { top: 4, right: 4, left: 0, bottom: 0 },
+  };
+  const axisProps = {
+    xAxis: { tick: { fontSize: 9, fill: '#6B7280' }, interval: 1 },
+    yAxis: { tick: { fontSize: 9, fill: '#6B7280' }, tickFormatter: v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v, width: 28 },
+  };
+  const tooltipStyle = {
+    contentStyle: { background: '#111827', border: '1px solid #374151', borderRadius: '8px', fontSize: 11 },
+    labelStyle:   { color: '#9CA3AF' },
+    formatter:    v => [v >= 1000 ? `${(v/1000).toFixed(2)} kW` : `${v} W`],
+  };
 
   return (
-    <div className="mt-4 border-t border-gray-700 pt-4">
-      <div className="flex justify-between items-center mb-3">
-        <p className="text-xs text-gray-400 font-medium">☀️ Zonneprognose (Forecast.Solar)</p>
-        <div className="flex gap-4 text-xs text-gray-500">
-          <span>Vandaag: <span className="text-amber-400 font-medium">{zon.vandaagKwh} kWh</span></span>
-          <span>Resterend: <span className="text-yellow-300 font-medium">{zon.vandaagResterendKwh} kWh</span></span>
-          <span>Morgen: <span className="text-orange-400 font-medium">{zon.morgenKwh} kWh</span></span>
+    <div className="border-t border-gray-700 pt-4 space-y-3">
+      {/* Header + totalen */}
+      <div className="flex flex-wrap justify-between items-baseline gap-2">
+        <p className="text-sm font-semibold text-gray-200">☀️ Zonneprognose</p>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <span className="text-gray-500">Vandaag totaal&nbsp;<span className="text-amber-400 font-semibold">{zon.vandaagKwh} kWh</span></span>
+          <span className="text-gray-500">Resterend&nbsp;<span className="text-yellow-300 font-semibold">{zon.vandaagResterendKwh} kWh</span></span>
+          <span className="text-gray-500">Morgen&nbsp;<span className="text-orange-400 font-semibold">{zon.morgenKwh} kWh</span></span>
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={140}>
-        <BarChart data={grafiek} barCategoryGap="10%">
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-          <XAxis
-            dataKey="tijd"
-            tick={{ fontSize: 8, fill: '#9CA3AF' }}
-            interval={1}
-          />
-          <YAxis
-            tick={{ fontSize: 8, fill: '#9CA3AF' }}
-            tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v}
-            width={32}
-          />
-          <Tooltip
-            formatter={(v, _name, props) => [`${v >= 1000 ? (v/1000).toFixed(2) + ' kW' : v + ' W'}`, props.payload?.dag === 'morgen' ? 'Morgen' : 'Vandaag']}
-            contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
-            labelStyle={{ color: '#9CA3AF' }}
-          />
-          <Bar dataKey="watt" radius={[2, 2, 0, 0]} isAnimationActive={false}>
-            {grafiek.map((entry, i) => (
-              <Cell
-                key={i}
-                fill={entry.dag === 'morgen' ? '#FB923C' : entry.dag === 'scheiding' ? 'transparent' : '#F59E0B'}
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-      <div className="flex gap-4 text-xs text-gray-600 mt-1">
-        <span>📍 Harkstede · 18 × 370Wp · ZW · 35°</span>
-        <span className="text-amber-500">■ vandaag</span>
-        <span className="text-orange-400">■ morgen</span>
+
+      {/* Twee aparte grafieken naast elkaar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Vandaag */}
+        <div className="bg-gray-750 rounded-lg p-2 border border-gray-700">
+          <p className="text-xs text-amber-400 font-medium mb-1 px-1">Vandaag</p>
+          <ResponsiveContainer width="100%" height={130}>
+            <BarChart data={vandaagData} {...chartProps}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis dataKey="tijd" {...axisProps.xAxis} />
+              <YAxis {...axisProps.yAxis} />
+              <Tooltip {...tooltipStyle} />
+              <Bar dataKey="watt" fill="#F59E0B" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Morgen */}
+        <div className="bg-gray-750 rounded-lg p-2 border border-gray-700">
+          <p className="text-xs text-orange-400 font-medium mb-1 px-1">Morgen</p>
+          <ResponsiveContainer width="100%" height={130}>
+            <BarChart data={morgenData} {...chartProps}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis dataKey="tijd" {...axisProps.xAxis} />
+              <YAxis {...axisProps.yAxis} />
+              <Tooltip {...tooltipStyle} />
+              <Bar dataKey="watt" fill="#FB923C" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
+
+      <p className="text-xs text-gray-600">📍 Harkstede · 18 × 370Wp · ZW 45° · 35° helling · Forecast.Solar</p>
     </div>
   );
 }
