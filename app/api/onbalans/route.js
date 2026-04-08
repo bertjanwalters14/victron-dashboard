@@ -196,13 +196,42 @@ async function haalZonnePrognose(nu, sql) {
   } catch (e) {
     console.error('Solcast mislukt:', e.message);
 
-    // Fallback: gebruik cache ook als die ouder is dan 1 uur
+    // Fallback 1: gebruik cache ook als die ouder is dan 1 uur
     try {
       const cacheRij = await sql`SELECT waarde FROM instellingen WHERE sleutel = 'solcast_cache'`;
       if (cacheRij[0]) return JSON.parse(cacheRij[0].waarde);
     } catch { /* geen cache */ }
 
-    return null;
+    // Fallback 2: Forecast.Solar
+    try {
+      console.log('Solcast mislukt, fallback naar Forecast.Solar');
+      const res = await fetch('https://api.forecast.solar/estimate/53.20/6.75/35/0/6.66');
+      if (!res.ok) return null;
+      const data = await res.json();
+      const wattHoursDay    = data.result?.watt_hours_day    || {};
+      const wattHoursPeriod = data.result?.watt_hours_period || {};
+      const watts           = data.result?.watts             || {};
+      const vandaag2 = nu.toISOString().split('T')[0];
+      const morgen2  = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate() + 1)).toISOString().split('T')[0];
+      const nuAms    = new Date(nu.getTime() + 2 * 3600000);
+      const nuAmsStr = nuAms.toISOString().replace('T', ' ').slice(0, 19);
+      let resterend = 0;
+      for (const [t, wh] of Object.entries(wattHoursPeriod)) {
+        if (t.startsWith(vandaag2) && t > nuAmsStr) resterend += wh / 1000;
+      }
+      const grafiekData2 = [];
+      for (const [t, w] of Object.entries(watts)) {
+        const isV = t.startsWith(vandaag2), isM = t.startsWith(morgen2);
+        if (isV || isM) grafiekData2.push({ tijd: t.slice(11, 16), watt: w, dag: isV ? 'vandaag' : 'morgen' });
+      }
+      grafiekData2.sort((a, b) => (a.dag === b.dag ? a.tijd.localeCompare(b.tijd) : a.dag === 'vandaag' ? -1 : 1));
+      return {
+        vandaagKwh:          +((wattHoursDay[vandaag2] || 0) / 1000).toFixed(2),
+        morgenKwh:           +((wattHoursDay[morgen2]  || 0) / 1000).toFixed(2),
+        vandaagResterendKwh: +resterend.toFixed(2),
+        grafiekData: grafiekData2,
+      };
+    } catch { return null; }
   }
 }
 
