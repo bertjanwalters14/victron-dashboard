@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 
 const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-03');
@@ -309,7 +309,71 @@ function OnbalansTegel() {
         </div>
       )}
 
+      {/* Zonneprognose */}
+      <ZonPrognose zon={data?.zonPrognose} />
+
       <p className="text-xs text-gray-600 mt-3">Ververst elke minuut · DESS blijft actief · alleen simulatie</p>
+    </div>
+  );
+}
+
+function ZonPrognose({ zon }) {
+  if (!zon) return null;
+
+  // Splits in vandaag en morgen voor kleur-codering
+  const vandaagData = (zon.grafiekData || []).filter(d => d.dag === 'vandaag');
+  const morgenData  = (zon.grafiekData || []).filter(d => d.dag === 'morgen');
+
+  // Gecombineerde grafiek: vandaag blauw, morgen geel met visuele scheiding
+  const grafiek = [
+    ...vandaagData,
+    ...(morgenData.length > 0 ? [{ tijd: '—', watt: 0, dag: 'scheiding' }] : []),
+    ...morgenData,
+  ];
+
+  return (
+    <div className="mt-4 border-t border-gray-700 pt-4">
+      <div className="flex justify-between items-center mb-3">
+        <p className="text-xs text-gray-400 font-medium">☀️ Zonneprognose (Forecast.Solar)</p>
+        <div className="flex gap-4 text-xs text-gray-500">
+          <span>Vandaag: <span className="text-amber-400 font-medium">{zon.vandaagKwh} kWh</span></span>
+          <span>Resterend: <span className="text-yellow-300 font-medium">{zon.vandaagResterendKwh} kWh</span></span>
+          <span>Morgen: <span className="text-orange-400 font-medium">{zon.morgenKwh} kWh</span></span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={grafiek} barCategoryGap="10%">
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+          <XAxis
+            dataKey="tijd"
+            tick={{ fontSize: 8, fill: '#9CA3AF' }}
+            interval={1}
+          />
+          <YAxis
+            tick={{ fontSize: 8, fill: '#9CA3AF' }}
+            tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v}
+            width={32}
+          />
+          <Tooltip
+            formatter={(v, _name, props) => [`${v >= 1000 ? (v/1000).toFixed(2) + ' kW' : v + ' W'}`, props.payload?.dag === 'morgen' ? 'Morgen' : 'Vandaag']}
+            contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }}
+            labelStyle={{ color: '#9CA3AF' }}
+          />
+          <Bar dataKey="watt" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+            {grafiek.map((entry, i) => (
+              <Cell
+                key={i}
+                fill={entry.dag === 'morgen' ? '#FB923C' : entry.dag === 'scheiding' ? 'transparent' : '#F59E0B'}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex gap-4 text-xs text-gray-600 mt-1">
+        <span>📍 Harkstede · 18 × 370Wp · ZW · 35°</span>
+        <span className="text-amber-500">■ vandaag</span>
+        <span className="text-orange-400">■ morgen</span>
+      </div>
     </div>
   );
 }

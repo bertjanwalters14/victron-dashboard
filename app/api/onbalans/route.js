@@ -6,8 +6,9 @@ function getDb() {
   return neon(url);
 }
 
-const BAT_MIN_PCT        = 10;
-const BAT_MAX_PCT        = 90;
+const BAT_MIN_PCT             = 10;
+const BAT_MAX_PCT             = 90;
+const BATTERIJ_CAPACITEIT_KWH = 32;
 
 // Dynamische drempels: percentiel van de dagprijzen
 const PERCENTIEL_LADEN    = 25;
@@ -63,7 +64,64 @@ function berekenDrempels(consumerPrijzen) {
   return { laadDrempel, ontlaadDrempel };
 }
 
-function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel) {
+async function haalZonnePrognose(nu) {
+  const vandaag = nu.toISOString().split('T')[0];
+  const morgen  = new Date(Date.UTC(nu.getUTCFullYear(), nu.getUTCMonth(), nu.getUTCDate() + 1));
+  const morgenStr = morgen.toISOString().split('T')[0];
+
+  try {
+    // Forecast.Solar: lat=53.20, lon=6.75, dec=35°, az=45 (ZW), 6.66 kWp
+    const res = await fetch('https://api.forecast.solar/estimate/53.20/6.75/35/45/6.66', {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Forecast.Solar HTTP ${res.status}`);
+    const data = await res.json();
+
+    const wattHoursDay    = data.result?.watt_hours_day    || {};
+    const wattHoursPeriod = data.result?.watt_hours_period || {};
+    const watts           = data.result?.watts             || {};
+
+    const vandaagKwh = (wattHoursDay[vandaag]  || 0) / 1000;
+    const morgenKwh  = (wattHoursDay[morgenStr] || 0) / 1000;
+
+    // Forecast.Solar geeft tijden in lokale tijd van de locatie (Amsterdam = UTC+2 in april)
+    const nuAms    = new Date(nu.getTime() + 2 * 3600000);
+    const nuAmsStr = nuAms.toISOString().replace('T', ' ').slice(0, 19);
+
+    let vandaagResterendKwh = 0;
+    for (const [tijdStr, wh] of Object.entries(wattHoursPeriod)) {
+      if (tijdStr.startsWith(vandaag) && tijdStr > nuAmsStr) {
+        vandaagResterendKwh += wh / 1000;
+      }
+    }
+
+    // Grafiekdata vandaag + morgen gesorteerd op tijd
+    const grafiekData = [];
+    for (const [tijdStr, w] of Object.entries(watts)) {
+      const isVandaag = tijdStr.startsWith(vandaag);
+      const isMorgen  = tijdStr.startsWith(morgenStr);
+      if (isVandaag || isMorgen) {
+        grafiekData.push({
+          tijd: tijdStr.slice(11, 16),
+          watt: w,
+          dag:  isVandaag ? 'vandaag' : 'morgen',
+        });
+      }
+    }
+    grafiekData.sort((a, b) => {
+      const dagOrd = (d) => (d === 'vandaag' ? 0 : 1);
+      if (dagOrd(a.dag) !== dagOrd(b.dag)) return dagOrd(a.dag) - dagOrd(b.dag);
+      return a.tijd.localeCompare(b.tijd);
+    });
+
+    return { vandaagKwh, morgenKwh, vandaagResterendKwh, grafiekData };
+  } catch (e) {
+    console.error('Forecast.Solar mislukt:', e.message);
+    return null;
+  }
+}
+
+function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh) {
   if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
     return { beslissing: 'stop', reden: `Batterij te laag (${batterijPct}%)` };
   }
@@ -74,6 +132,16 @@ function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempe
     return { beslissing: 'ontladen', reden: `Prijs hoog (€${consumerPrijs.toFixed(4)} ≥ €${ontlaadDrempel.toFixed(4)})` };
   }
   if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    // Als er genoeg zon verwacht wordt om de batterij zelf te vullen → niet laden van net
+    if (zonResterendKwh !== null && batterijPct !== null) {
+      const ruimteKwh = BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - batterijPct) / 100;
+      if (zonResterendKwh >= ruimteKwh * 0.8) {
+        return {
+          beslissing: 'wachten',
+          reden: `Zon vult batterij (${zonResterendKwh.toFixed(1)} kWh verwacht, ${ruimteKwh.toFixed(1)} kWh ruimte)`,
+        };
+      }
+    }
     return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)} ≤ €${laadDrempel.toFixed(4)})` };
   }
   return { beslissing: 'wachten', reden: `Prijs neutraal (€${consumerPrijs.toFixed(4)})` };
@@ -154,9 +222,12 @@ export async function GET(request) {
     const consumerPrijzenVandaag = frankPrijzen.map(p => frankNaarConsumer(p));
     const { laadDrempel, ontlaadDrempel } = berekenDrempels(consumerPrijzenVandaag);
 
-    // 2. TenneT onbalansprijzen ophalen (aanvullende info)
-    const tennетData   = await haalTenneTData(nu);
-    const tennетPoints = tennетData?.TimeSeries?.[0]?.Period?.Points || [];
+    // 2. Zonneprognose ophalen via Forecast.Solar (parallel met TenneT)
+    const [tennетData, zonPrognose] = await Promise.all([
+      haalTenneTData(nu),
+      haalZonnePrognose(nu),
+    ]);
+    const tennетPoints  = tennетData?.TimeSeries?.[0]?.Period?.Points || [];
     const huidigTennet = tennетPoints.find(p => {
       const start = new Date(p.timeInterval_start);
       const eind  = new Date(p.timeInterval_end);
@@ -181,9 +252,10 @@ export async function GET(request) {
     const gridW       = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].grid_w))     : null;
     const verbruikW   = sensorRow.length > 0 ? Math.round(parseFloat(sensorRow[0].verbruik_w)) : null;
 
-    // 4. Beslissing bepalen op basis van dagelijkse dynamische drempels
+    // 4. Beslissing bepalen (prijs + zonprognose)
+    const zonResterendKwh = zonPrognose?.vandaagResterendKwh ?? null;
     const { beslissing, reden } = consumerPrijs !== null
-      ? bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel)
+      ? bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
 
     // 5. Opslaan in database (consumer prijs)
@@ -229,6 +301,12 @@ export async function GET(request) {
         percentiel: { laden: PERCENTIEL_LADEN, ontladen: PERCENTIEL_ONTLADEN },
       },
       prijzenVandaag: allePrijzen,
+      zonPrognose: zonPrognose ? {
+        vandaagKwh:          +zonPrognose.vandaagKwh.toFixed(2),
+        morgenKwh:           +zonPrognose.morgenKwh.toFixed(2),
+        vandaagResterendKwh: +zonPrognose.vandaagResterendKwh.toFixed(2),
+        grafiekData:          zonPrognose.grafiekData,
+      } : null,
     });
 
   } catch (err) {
