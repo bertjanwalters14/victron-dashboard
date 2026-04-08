@@ -296,14 +296,25 @@ export async function GET(request) {
     // 4. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
     // SOC en sensor data apart opvragen: onbalans INSERT heeft geen solar/grid/verbruik
     const sql = getDb();
-    // bron = 'nodered' markeert rijen van Node-RED (robuust, werkt ook als solar_w null is)
-    const sensorRow = await sql`
-      SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
-      FROM onbalans_log
-      WHERE bron = 'nodered'
-      ORDER BY tijdstip DESC
-      LIMIT 1
-    `;
+    // bron = 'nodered' markeert rijen van Node-RED — fallback op solar_w als kolom nog niet bestaat
+    let sensorRow;
+    try {
+      sensorRow = await sql`
+        SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
+        FROM onbalans_log
+        WHERE bron = 'nodered'
+        ORDER BY tijdstip DESC
+        LIMIT 1
+      `;
+    } catch {
+      sensorRow = await sql`
+        SELECT batterij_pct, solar_w, grid_w, verbruik_w, tijdstip
+        FROM onbalans_log
+        WHERE solar_w IS NOT NULL
+        ORDER BY tijdstip DESC
+        LIMIT 1
+      `;
+    }
     const r            = sensorRow[0] ?? null;
     const batterijPct  = r ? parseFloat(r.batterij_pct) : null;
     const solarW       = r ? Math.round(parseFloat(r.solar_w))    : null;

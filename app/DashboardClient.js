@@ -219,7 +219,7 @@ function OnbalansTegel() {
       <div className={`bg-gradient-to-r ${bgKleur} rounded-xl p-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3`}>
         <div>
           <p className="text-gray-400 text-xs font-medium uppercase tracking-wide mb-1">
-            Huidig advies · {modus === 'groen' ? '🌿 groen modus' : '📈 handel modus'}
+            Huidig advies · {modus === 'groen' ? 'Groen modus' : 'Handel modus'}
           </p>
           <p className={`text-3xl font-extrabold tracking-tight ${adviesKleur}`}>
             {loading ? '…' : `${emoji} ${beslissing?.toUpperCase() ?? '—'}`}
@@ -382,7 +382,7 @@ function OnbalansTegel() {
 
       <p className="text-xs text-gray-600 pt-1 border-t border-gray-700">
         Ververst elke minuut&ensp;·&ensp;
-        {modus === 'groen' ? '🌿 Groen modus actief' : '📈 Handel modus actief'}&ensp;·&ensp;
+        {modus === 'groen' ? 'Groen modus actief' : 'Handel modus actief'}&ensp;·&ensp;
         {data?.tijdstip ? `API ${minsGeleden(data.tijdstip)}` : ''}
       </p>
     </div>
@@ -426,7 +426,7 @@ function ModusToggle({ modus, onWissel }) {
         <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform
           ${isGroen ? 'translate-x-4' : 'translate-x-0'}`} />
       </span>
-      {bezig ? '…' : isGroen ? '🌿 Groen' : '📈 Handel'}
+      {bezig ? '…' : isGroen ? 'Groen' : 'Handel'}
     </button>
   );
 }
