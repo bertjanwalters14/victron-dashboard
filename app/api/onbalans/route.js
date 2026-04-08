@@ -57,12 +57,12 @@ export async function GET(request) {
     let batterijPct = null;
     try {
       const batRes = await fetch(
-        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/diagnostics?count=1`,
+        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/widgets/BatterySummary`,
         { headers: { 'x-authorization': `Token ${process.env.VICTRON_API_TOKEN}` } }
       );
       const batData = await batRes.json();
-      const socRecord = batData?.records?.find(r => r.description === 'Battery State of Charge');
-      if (socRecord) batterijPct = parseFloat(socRecord.formattedValue);
+      const soc = batData?.records?.voltage?.stateOfCharge;
+      if (soc !== undefined) batterijPct = parseFloat(soc);
     } catch {}
 
     // 3. Bepaal beslissing
