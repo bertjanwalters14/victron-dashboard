@@ -1322,8 +1322,8 @@ function AlgoritmeSimulatie() {
 
           {/* Noot over aannames */}
           <p className="text-gray-600 text-xs mt-3">
-            ℹ️ Aannames: SOC start {data.simulatie.socStartPct}%, max laad/ontlaadvermogen 10 kW/uur (gemeten max 9,7 kW), slijtage €0,01/kWh.
-            Werkelijk resultaat incl. zonneopbrengst en huisverbruik.
+            ℹ️ Sim. = puur arbitrage (kopen/verkopen aan net). Niet meegeteld: waarde van batterij → huis (Bc) en zon → net (Pg) — die zitten wél in &quot;Werkelijk VRM&quot;.
+            Aannames: SOC start {data.simulatie.socStartPct}% (gemeten ochtendwaarde), max 10 kW, slijtage €0,01/kWh.
           </p>
         </>
       )}
