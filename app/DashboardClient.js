@@ -1236,7 +1236,10 @@ function AlgoritmeSimulatie() {
               <p className={`font-bold text-lg ${data.simulatie.nettoWinst >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 €{data.simulatie.nettoWinst.toFixed(2)}
               </p>
-              <p className="text-gray-500 text-xs">−€{data.simulatie.wearKosten} slijtage</p>
+              <p className="text-gray-500 text-xs">
+                −€{data.simulatie.wearKosten} slijtage
+                {data.simulatie.socCorrectie > 0 && ` · −€${data.simulatie.socCorrectie} SOC`}
+              </p>
             </div>
             <div className={`border rounded-lg p-3 text-center ${
               data.actueel ? (data.actueel.winst_euro >= 0 ? 'border-emerald-800' : 'border-red-800') : 'border-gray-700'

@@ -161,7 +161,18 @@ export async function GET(request) {
     });
 
     const wearKosten  = (totaalLadenKwh + totaalOntlaadKwh) * WEAR_PER_KWH;
-    const nettoWinst  = opbrengstOntladen - kostenLaden - wearKosten;
+
+    // SOC-correctie: als we meer ontladen dan geladen (SOC daalt), corrigeer de
+    // "gratis" beginvoorraad tegen de gemiddelde dagprijs.
+    // Zonder correctie is de simulatie oneerlijk: het begint op 50% en kan die
+    // energie gratis ontladen zonder hem te hebben ingekocht.
+    const socStartKwh  = BATTERIJ_CAPACITEIT_KWH * SOC_START_PCT / 100;
+    const socEindKwh   = uren[23] ? (uren[23].socPct / 100) * BATTERIJ_CAPACITEIT_KWH : socStartKwh;
+    const socVerschilKwh = socStartKwh - socEindKwh; // positief = meer ontladen dan geladen
+    const gemPrijs     = prijzen.reduce((s, p) => s + p, 0) / prijzen.length;
+    const socCorrectie = socVerschilKwh > 0 ? socVerschilKwh * gemPrijs : 0;
+
+    const nettoWinst  = opbrengstOntladen - kostenLaden - wearKosten - socCorrectie;
 
     // ── 4. Actuele data uit DB ────────────────────────────────────────────
     const sql = neon(process.env.DATABASE_URL);
@@ -189,6 +200,7 @@ export async function GET(request) {
         kostenLaden:       +kostenLaden.toFixed(2),
         opbrengstOntladen: +opbrengstOntladen.toFixed(2),
         wearKosten:        +wearKosten.toFixed(2),
+        socCorrectie:      +socCorrectie.toFixed(2),
         nettoWinst:        +nettoWinst.toFixed(2),
       },
       actueel: actueel ? {
