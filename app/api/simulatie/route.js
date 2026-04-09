@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { neon } from '@neondatabase/serverless';
 
-// ── Constanten (zelfde als onbalans/route.js) ─────────────────────────────
+// ── Constanten (gelijk aan onbalans/route.js) ────────────────────────────
 const BAT_MIN_PCT             = 10;
 const BAT_MAX_PCT             = 90;
 const BATTERIJ_CAPACITEIT_KWH = 32;
@@ -13,6 +13,11 @@ const LAAD_VERMOGEN_KW        = 10;   // kW per uur max laden (gemeten: 9.7 kW)
 const ONTLAAD_VERMOGEN_KW     = 10;   // kW per uur max ontladen
 const WEAR_PER_KWH            = 0.01; // €/kWh slijtage
 const SOC_START_PCT           = 50;   // aanname: dag begint op 50%
+const AVOND_RESERVE_PCT       = 30;   // % SOC bewaren voor avondverbruik
+const AVOND_RESERVE_START     = 20;   // uur: na 20:00 reserve bewaken
+const AVOND_PIEK_START        = 16;
+const AVOND_PIEK_EIND         = 20;
+const SOLAR_LADEN_DREMPEL     = 2000; // W
 
 function anwbPrijs(spot) {
   return (spot + 0.03 + 0.13) * 1.21;
@@ -52,15 +57,47 @@ function berekenDrempels(consumerPrijzen) {
   };
 }
 
-function bepaalBeslissing(prijs, socPct, laadDrempel, ontlaadDrempel) {
-  if (socPct < BAT_MIN_PCT)
-    return 'stop';
-  if (prijs < 0)
-    return 'laden';
-  if (prijs >= ontlaadDrempel && socPct > BAT_MIN_PCT)
-    return 'ontladen';
-  if (prijs <= laadDrempel && socPct < BAT_MAX_PCT)
-    return 'laden';
+// Dag-cyclus beslissing — identiek aan onbalans/route.js bepaalBeslissing
+function bepaalBeslissing(uur, prijs, socPct, prijzen, laadDrempel, ontlaadDrempel, solarRestKwh) {
+  if (socPct < BAT_MIN_PCT) return 'stop';
+  if (prijs < 0)            return 'laden';
+
+  // Na 20:00: avondreserve bewaken
+  if (uur >= AVOND_RESERVE_START) {
+    if (socPct <= AVOND_RESERVE_PCT) return 'wachten';
+    if (prijs >= ontlaadDrempel)     return 'ontladen';
+  }
+
+  // Herlaadpotentieel (zon + goedkope uren resterend)
+  const goedkopeUrenRest = prijzen.slice(uur + 1).filter(p => p <= laadDrempel).length;
+  const socKwh = socPct / 100 * BATTERIJ_CAPACITEIT_KWH;
+  const maxHerlaadKwh = Math.min(
+    (solarRestKwh ?? 0) + goedkopeUrenRest * LAAD_VERMOGEN_KW,
+    BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - socPct) / 100
+  );
+
+  // Avondpiek uren nog te komen
+  const avondPiekUrenNog = prijzen.slice(uur + 1).filter((p, i) => {
+    const absUur = uur + 1 + i;
+    return absUur >= AVOND_PIEK_START && absUur < AVOND_PIEK_EIND && p >= ontlaadDrempel;
+  }).length;
+  const avondReserveKwh    = AVOND_RESERVE_PCT / 100 * BATTERIJ_CAPACITEIT_KWH;
+  const bewaarVoorAvondKwh = avondPiekUrenNog * ONTLAAD_VERMOGEN_KW;
+
+  // Avondpiek zelf
+  const isAvondPiek = uur >= AVOND_PIEK_START && uur < AVOND_PIEK_EIND;
+  if (isAvondPiek && prijs >= ontlaadDrempel && socPct > AVOND_RESERVE_PCT) return 'ontladen';
+
+  // Vóór avondpiek: ontladen alleen als herladen daarna mogelijk is
+  if (prijs >= ontlaadDrempel && uur < AVOND_PIEK_START && socPct > AVOND_RESERVE_PCT) {
+    const naOntlaadKwh = Math.max(0, socKwh - ONTLAAD_VERMOGEN_KW);
+    const naHerlaadKwh = Math.min(naOntlaadKwh + maxHerlaadKwh, BATTERIJ_CAPACITEIT_KWH * BAT_MAX_PCT / 100);
+    const beschikbaarVoorAvond = naHerlaadKwh - avondReserveKwh;
+    if (avondPiekUrenNog === 0 || beschikbaarVoorAvond >= bewaarVoorAvondKwh) return 'ontladen';
+    return 'wachten';
+  }
+
+  if (prijs <= laadDrempel && socPct < BAT_MAX_PCT) return 'laden';
   return 'wachten';
 }
 
@@ -120,9 +157,19 @@ export async function GET(request) {
     let kostenLaden       = 0;
     let opbrengstOntladen = 0;
 
+    // Schat resterend zonkwh per uur (afnemend — zon schijnt minder naarmate dag vordert)
+    // Zonder echte Solcast data in simulatie: verdeel zonnig-uur schatting lineair
+    // over de middaguren. Dit is een vereenvoudiging voor de herlaadcheck.
+    function solarRestPerUur(uur) {
+      // Aanname: zon draagt bij van 08:00-17:00, piek rond 13:00
+      // Ruwe schatting — in werkelijkheid komt dit van Solcast
+      const zonnige = [0,0,0,0,0,0,0,0,1,2,3,4,4,3,2,1,0,0,0,0,0,0,0,0];
+      return zonnige.slice(uur + 1).reduce((s, v) => s + v, 0) * 1.5; // kWh
+    }
+
     const uren = prijzen.map((prijs, uur) => {
       const socPct    = (socKwh / BATTERIJ_CAPACITEIT_KWH) * 100;
-      const beslissing = bepaalBeslissing(prijs, socPct, laadDrempel, ontlaadDrempel);
+      const beslissing = bepaalBeslissing(uur, prijs, socPct, prijzen, laadDrempel, ontlaadDrempel, solarRestPerUur(uur));
 
       let kwhDelta  = 0;
       let euroDelta = 0;

@@ -11,14 +11,20 @@ function getDb() {
 const BAT_MIN_PCT             = 10;
 const BAT_MAX_PCT             = 90;
 const BATTERIJ_CAPACITEIT_KWH = 32;
+const LAAD_VERMOGEN_KW        = 10;   // kW per uur max laden (gemeten: 9.7 kW)
+const ONTLAAD_VERMOGEN_KW     = 10;   // kW per uur max ontladen
 
 // Groen modus drempels
 const GROEN_MAX_LADEN_PCT = 70;   // Alleen van net laden als batterij < 70%
-const GROEN_MIN_SOLAR_W   = 300;  // Minimale zon voor groen-modus netten
 
 // Handel modus: zon moet echt goed schijnen voor "laden via zon" beslissing
-// Onder deze drempel: prijs bepaalt alles, zwakke zon telt niet mee
-const SOLAR_LADEN_DREMPEL = 2000; // W — bijv. 652W is amper genoeg voor het huis
+const SOLAR_LADEN_DREMPEL = 2000; // W — zwakke zon telt niet mee
+
+// Dag-cyclus strategie — avondreserve voor warmtepomp + huisverbruik
+const AVOND_RESERVE_PCT   = 30;  // % SOC bewaren na avondpiek (~9.6 kWh bij 32 kWh)
+const AVOND_RESERVE_START = 20;  // uur: na 20:00 reserve strikt bewaken
+const AVOND_PIEK_START    = 16;  // uur: avondpiek begint
+const AVOND_PIEK_EIND     = 20;  // uur: avondpiek eindigt
 
 // Dynamische drempels: percentiel van de dagprijzen
 const PERCENTIEL_LADEN    = 25;
@@ -61,6 +67,18 @@ async function haalFrankEnergiePrijzen(vandaag) {
   const json = await res.json();
   if (json.errors) throw new Error(`Frank Energie GraphQL fout: ${json.errors[0]?.message}`);
   return json.data?.marketPricesElectricity || [];
+}
+
+// Simpele DST-check voor Nederland
+function isDaylightSaving(date) {
+  const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
+  const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+  return date.getTimezoneOffset() < Math.max(jan, jul);
+}
+
+// Geeft Nederlands lokaal uur (0-23)
+function getNlUur(nu) {
+  return (nu.getUTCHours() + (isDaylightSaving(nu) ? 2 : 1)) % 24;
 }
 
 function berekenDrempels(consumerPrijzen) {
@@ -257,49 +275,113 @@ function essentieelOverride(beslissing, reden, batterijPct, essentieelW, gridW) 
   return { beslissing, reden };
 }
 
-// ── HANDEL modus: prijsoptimalisatie is prio, zon voorkomt onnodige netaankoop ─
-function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, solarW) {
-  if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
+// ── HANDEL modus v2: dag-cyclus bewust ────────────────────────────────────
+// Strategie:
+//   Nacht/vroeg  → laden bij lage prijs
+//   Ochtend piek → ontladen, maar ALLEEN als zon+goedkope uren daarna kunnen
+//                  herladen voor de avondpiek
+//   Middag       → laden via zon of lage prijs (herwapening voor avond)
+//   Avondpiek    → ontladen tot AVOND_RESERVE_PCT
+//   Na 20:00     → AVOND_RESERVE_PCT beschermen voor warmtepomp + huisverbruik
+//
+// prijzenPerNlUur: array[24] met consumentenprijs per NL-uur (null = onbekend)
+function bepaalBeslissing(
+  huidigUur, consumerPrijs, batterijPct, prijzenPerNlUur,
+  laadDrempel, ontlaadDrempel, solarRestKwh, solarW
+) {
+  // ── Harde grenzen ─────────────────────────────────────────────
+  if (batterijPct !== null && batterijPct < BAT_MIN_PCT)
     return { beslissing: 'stop', reden: `Batterij te laag (${batterijPct}%)` };
-  }
-  if (consumerPrijs < 0) {
+  if (consumerPrijs < 0)
     return { beslissing: 'laden', reden: `Negatieve prijs (€${consumerPrijs.toFixed(4)}) — gratis stroom` };
-  }
-  if (consumerPrijs >= ontlaadDrempel && (batterijPct === null || batterijPct > BAT_MIN_PCT)) {
-    return { beslissing: 'ontladen', reden: `Prijs hoog (€${consumerPrijs.toFixed(4)} ≥ €${ontlaadDrempel.toFixed(4)})` };
-  }
-  // Middenzone: zon schijnt echt goed → laden via zon
-  if (solarW !== null && solarW >= SOLAR_LADEN_DREMPEL && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    return { beslissing: 'laden', reden: `Zon schijnt goed (${(solarW/1000).toFixed(1)} kW) — laden via zon` };
-  }
-  if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    // Zon vult batterij vandaag nog → niet actief van net kopen
-    if (zonResterendKwh !== null && batterijPct !== null) {
-      const ruimteKwh = BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - batterijPct) / 100;
-      if (zonResterendKwh >= ruimteKwh * 0.8) {
-        return { beslissing: 'laden', reden: `Zon vult batterij vandaag (${zonResterendKwh.toFixed(1)} kWh verwacht)` };
-      }
+
+  // ── Na 20:00: avondreserve bewaken ────────────────────────────
+  if (huidigUur >= AVOND_RESERVE_START) {
+    if (batterijPct !== null && batterijPct <= AVOND_RESERVE_PCT) {
+      const z = solarW > 100 ? ` · zon ${(solarW/1000).toFixed(1)} kW` : '';
+      return { beslissing: 'wachten', reden: `Avondreserve (${batterijPct}% ≤ ${AVOND_RESERVE_PCT}%) — bewaken voor nacht${z}` };
     }
-    return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)} ≤ €${laadDrempel.toFixed(4)})` };
+    // Na 20:00 mag nog wel ontladen als prijs hoog en boven reserve
+    if (consumerPrijs >= ontlaadDrempel && (batterijPct === null || batterijPct > AVOND_RESERVE_PCT))
+      return { beslissing: 'ontladen', reden: `Late piek (${huidigUur}:00): €${consumerPrijs.toFixed(4)} → tot ${AVOND_RESERVE_PCT}%` };
   }
-  // Middenzone: prijs neutraal, zon laadt batterij automatisch
-  const zonNoot = (solarW !== null && solarW > 100)
-    ? ` · zon laadt batterij (${(solarW/1000).toFixed(1)} kW)`
-    : '';
-  return { beslissing: 'wachten', reden: `Prijs neutraal (€${consumerPrijs.toFixed(4)})${zonNoot}` };
+
+  // ── Bereken herlaadpotentieel voor rest van dag ────────────────
+  // Zon + goedkope uren die nog komen — hoeveel kWh kan batterij bijkomen?
+  const solarKwhRest = solarRestKwh ?? 0;
+  const goedkopeUrenRest = prijzenPerNlUur
+    .slice(huidigUur + 1)
+    .filter(p => p !== null && p <= laadDrempel).length;
+  const socKwh = (batterijPct ?? 50) / 100 * BATTERIJ_CAPACITEIT_KWH;
+  const maxHerlaadKwh = Math.min(
+    solarKwhRest + goedkopeUrenRest * LAAD_VERMOGEN_KW,
+    BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - (batterijPct ?? 50)) / 100
+  );
+
+  // ── Avondpiek uren die nog komen ──────────────────────────────
+  const avondPiekUrenNog = prijzenPerNlUur
+    .slice(huidigUur + 1)
+    .filter((p, i) => {
+      const uur = huidigUur + 1 + i;
+      return p !== null && uur >= AVOND_PIEK_START && uur < AVOND_PIEK_EIND && p >= ontlaadDrempel;
+    }).length;
+  const avondReserveKwh    = AVOND_RESERVE_PCT / 100 * BATTERIJ_CAPACITEIT_KWH;
+  const bewaarVoorAvondKwh = avondPiekUrenNog * ONTLAAD_VERMOGEN_KW;
+
+  // ── Avondpiek zelf (16-20): ontladen naar reserve ─────────────
+  const isAvondPiek = huidigUur >= AVOND_PIEK_START && huidigUur < AVOND_PIEK_EIND;
+  if (isAvondPiek && consumerPrijs >= ontlaadDrempel && (batterijPct === null || batterijPct > AVOND_RESERVE_PCT))
+    return { beslissing: 'ontladen', reden: `Avondpiek (${huidigUur}:00): €${consumerPrijs.toFixed(4)} → ontladen tot ${AVOND_RESERVE_PCT}%` };
+
+  // ── Vóór avondpiek: ontladen alleen als herladen daarna kan ───
+  if (consumerPrijs >= ontlaadDrempel && huidigUur < AVOND_PIEK_START && (batterijPct === null || batterijPct > AVOND_RESERVE_PCT)) {
+    const naOntlaadKwh = Math.max(0, socKwh - ONTLAAD_VERMOGEN_KW);
+    const naHerlaadKwh = Math.min(naOntlaadKwh + maxHerlaadKwh, BATTERIJ_CAPACITEIT_KWH * BAT_MAX_PCT / 100);
+    const beschikbaarVoorAvond = naHerlaadKwh - avondReserveKwh;
+
+    if (avondPiekUrenNog === 0 || beschikbaarVoorAvond >= bewaarVoorAvondKwh) {
+      const avondNoot = avondPiekUrenNog > 0
+        ? ` · herlaad ~${maxHerlaadKwh.toFixed(1)} kWh (zon + ${goedkopeUrenRest} goedkope uren)`
+        : '';
+      return { beslissing: 'ontladen', reden: `Hoge prijs (€${consumerPrijs.toFixed(4)})${avondNoot}` };
+    }
+    return {
+      beslissing: 'wachten',
+      reden: `Prijs hoog maar bewaar voor avondpiek (${avondPiekUrenNog}u) · herlaad ~${maxHerlaadKwh.toFixed(1)} kWh via zon+goedkoop`,
+    };
+  }
+
+  // ── Laden via zon ─────────────────────────────────────────────
+  if (solarW !== null && solarW >= SOLAR_LADEN_DREMPEL && (batterijPct === null || batterijPct < BAT_MAX_PCT))
+    return { beslissing: 'laden', reden: `Zon schijnt goed (${(solarW/1000).toFixed(1)} kW) — laden voor avondpiek` };
+
+  // ── Laden via lage prijs ──────────────────────────────────────
+  if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    const doel = avondPiekUrenNog > 0 ? ` — laden voor ${avondPiekUrenNog} avondpiekuur` : '';
+    return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)})${doel}` };
+  }
+
+  // ── Wachten ───────────────────────────────────────────────────
+  const zonNoot   = solarW !== null && solarW > 100 ? ` · zon laadt (${(solarW/1000).toFixed(1)} kW)` : '';
+  const avondNoot = avondPiekUrenNog > 0 ? ` · ${avondPiekUrenNog} avondpiekuur verwacht` : '';
+  return { beslissing: 'wachten', reden: `Prijs neutraal (€${consumerPrijs.toFixed(4)})${zonNoot}${avondNoot}` };
 }
 
 // ── GROEN modus: zelfconsumptie is prio, surplus mag verkocht bij hoge prijs ──
-function bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, morgenKwh, solarW) {
+function bepaalBeslissingGroen(huidigUur, consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, morgenKwh, solarW) {
   if (batterijPct !== null && batterijPct < BAT_MIN_PCT) {
     return { beslissing: 'stop', reden: `Batterij te laag (${batterijPct}%)` };
   }
   if (consumerPrijs < 0) {
     return { beslissing: 'laden', reden: `Negatieve prijs (€${consumerPrijs.toFixed(4)}) — gratis stroom` };
   }
+  // Na 20:00: avondreserve ook in groen modus bewaken
+  if (huidigUur >= AVOND_RESERVE_START && batterijPct !== null && batterijPct <= AVOND_RESERVE_PCT) {
+    return { beslissing: 'wachten', reden: `Groen: avondreserve (${batterijPct}%) bewaken` };
+  }
   // Surplus ontladen: batterij >75% + hoge prijs + morgen of vandaag nog genoeg zon
   const heeftSurplus  = (batterijPct ?? 0) >= 75;
-  const morgenZonnig  = (morgenKwh ?? 0) >= 8;    // >8 kWh morgen verwacht
+  const morgenZonnig  = (morgenKwh ?? 0) >= 8;
   const nogZonVandaag = (zonResterendKwh ?? 0) >= 3;
   if (heeftSurplus && consumerPrijs >= ontlaadDrempel && (morgenZonnig || nogZonVandaag)) {
     const zonReden = morgenZonnig
@@ -392,14 +474,22 @@ export async function GET(request) {
         priceIncludingMarkup: (p.price + 0.03 + 0.13),
       }));
     }
-    const huidigUur    = frankPrijzen.find(p => {
+    // Huidig NL uur + prijzen per NL uur (day-ahead array voor beslissingslogica)
+    const huidigNlUur = getNlUur(nu);
+    const prijzenPerNlUur = new Array(24).fill(null);
+    for (const p of frankPrijzen) {
+      const nlUur = getNlUur(new Date(p.from));
+      if (nlUur >= 0 && nlUur < 24) prijzenPerNlUur[nlUur] = frankNaarConsumer(p);
+    }
+
+    const huidigUurObj  = frankPrijzen.find(p => {
       const van = new Date(p.from);
       const tot = new Date(p.till);
       return van <= nu && tot > nu;
     }) || frankPrijzen[frankPrijzen.length - 1];
 
-    const spotPrijs     = huidigUur ? parseFloat(huidigUur.marketPrice) : null;
-    const consumerPrijs = huidigUur ? frankNaarConsumer(huidigUur)      : null;
+    const spotPrijs     = huidigUurObj ? parseFloat(huidigUurObj.marketPrice) : null;
+    const consumerPrijs = huidigUurObj ? frankNaarConsumer(huidigUurObj)      : null;
 
     // Dynamische drempels berekenen op basis van vandaag
     const consumerPrijzenVandaag = frankPrijzen.map(p => frankNaarConsumer(p));
@@ -460,8 +550,8 @@ export async function GET(request) {
     const morgenKwh = zonPrognose?.morgenKwh ?? null;
     const rawResultaat = consumerPrijs !== null
       ? modus === 'groen'
-        ? bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, morgenKwh, solarW)
-        : bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, solarW)
+        ? bepaalBeslissingGroen(huidigNlUur, consumerPrijs, batterijPct, laadDrempel, ontlaadDrempel, zonResterendKwh, morgenKwh, solarW)
+        : bepaalBeslissing(huidigNlUur, consumerPrijs, batterijPct, prijzenPerNlUur, laadDrempel, ontlaadDrempel, zonResterendKwh, solarW)
       : { beslissing: 'wachten', reden: 'Geen prijsdata beschikbaar' };
 
     // Essentieel override: als wachten maar essentiële lasten trekken van net → ontladen
