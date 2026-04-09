@@ -614,8 +614,8 @@ export async function GET(request) {
     });
 
     // Exacte tijd-label van het huidige uur (matcht altijd met grafiekdata)
-    const huidigeTijd = huidigUur
-      ? new Date(huidigUur.from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
+    const huidigeTijd = huidigUurObj
+      ? new Date(huidigUurObj.from).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
       : null;
 
     return Response.json({
