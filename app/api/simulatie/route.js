@@ -1,0 +1,207 @@
+export const dynamic = 'force-dynamic';
+
+import { neon } from '@neondatabase/serverless';
+
+// ── Constanten (zelfde als onbalans/route.js) ─────────────────────────────
+const BAT_MIN_PCT             = 10;
+const BAT_MAX_PCT             = 90;
+const BATTERIJ_CAPACITEIT_KWH = 32;
+const PERCENTIEL_LADEN        = 25;
+const PERCENTIEL_ONTLADEN     = 75;
+const VLOER_ONTLADEN          = 0.20;
+const LAAD_VERMOGEN_KW        = 10;   // kW per uur max laden (gemeten: 9.7 kW)
+const ONTLAAD_VERMOGEN_KW     = 10;   // kW per uur max ontladen
+const WEAR_PER_KWH            = 0.01; // €/kWh slijtage
+const SOC_START_PCT           = 50;   // aanname: dag begint op 50%
+
+function anwbPrijs(spot) {
+  return (spot + 0.03 + 0.13) * 1.21;
+}
+
+function isDaylightSaving(date) {
+  const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
+  const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+  return date.getTimezoneOffset() < Math.max(jan, jul);
+}
+
+async function haalUurprijzen(datumStr) {
+  const isDST   = isDaylightSaving(new Date(datumStr + 'T12:00:00Z'));
+  const offset  = isDST ? 2 : 1;
+  const vanUtc  = new Date(datumStr + 'T00:00:00Z');
+  vanUtc.setUTCHours(vanUtc.getUTCHours() - offset);
+  const totUtc  = new Date(datumStr + 'T23:59:59Z');
+  totUtc.setUTCHours(totUtc.getUTCHours() - offset);
+
+  const res = await fetch(
+    `https://api.energyzero.nl/v1/energyprices?fromDate=${vanUtc.toISOString()}&tillDate=${totUtc.toISOString()}&interval=4&usageType=1&inclBtw=false`
+  );
+  if (!res.ok) throw new Error(`EnergyZero fout: ${res.status}`);
+  const json = await res.json();
+  return json?.Prices || [];
+}
+
+function berekenDrempels(consumerPrijzen) {
+  const gesorteerd = [...consumerPrijzen].sort((a, b) => a - b);
+  const n = gesorteerd.length;
+  return {
+    laadDrempel:    gesorteerd[Math.floor(n * PERCENTIEL_LADEN / 100)],
+    ontlaadDrempel: Math.max(
+      gesorteerd[Math.floor(n * PERCENTIEL_ONTLADEN / 100)],
+      VLOER_ONTLADEN
+    ),
+  };
+}
+
+function bepaalBeslissing(prijs, socPct, laadDrempel, ontlaadDrempel) {
+  if (socPct < BAT_MIN_PCT)
+    return 'stop';
+  if (prijs < 0)
+    return 'laden';
+  if (prijs >= ontlaadDrempel && socPct > BAT_MIN_PCT)
+    return 'ontladen';
+  if (prijs <= laadDrempel && socPct < BAT_MAX_PCT)
+    return 'laden';
+  return 'wachten';
+}
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  if (searchParams.get('secret') !== process.env.CRON_SECRET) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Datum: ?datum=2026-04-09 of standaard gisteren
+  let datumStr = searchParams.get('datum');
+  if (!datumStr) {
+    const gisteren = new Date();
+    gisteren.setUTCDate(gisteren.getUTCDate() - 1);
+    datumStr = gisteren.toISOString().split('T')[0];
+  }
+
+  try {
+    // ── 1. Spotprijzen ophalen ─────────────────────────────────────────────
+    const rawPrijzen = await haalUurprijzen(datumStr);
+    if (!rawPrijzen.length) {
+      return Response.json({ success: false, bericht: 'Geen prijsdata beschikbaar voor deze dag' });
+    }
+
+    // Sorteer op tijd en pak de 24 NL-uurprijzen
+    const isDST     = isDaylightSaving(new Date(datumStr + 'T12:00:00Z'));
+    const offsetMs  = (isDST ? 2 : 1) * 3600000;
+
+    // Maak uur → prijs map (NL lokale uren 0-23)
+    const prijsPerUur = new Array(24).fill(null);
+    for (const p of rawPrijzen) {
+      const utcMs   = new Date(p.readingDate).getTime();
+      const nlMs    = utcMs + offsetMs;
+      const nlUur   = new Date(nlMs).getUTCHours();
+      if (nlUur >= 0 && nlUur < 24) {
+        prijsPerUur[nlUur] = anwbPrijs(parseFloat(p.price));
+      }
+    }
+
+    // Vul eventuele gaten met gemiddelde
+    const bekende = prijsPerUur.filter(v => v !== null);
+    const gemiddelde = bekende.length
+      ? bekende.reduce((s, v) => s + v, 0) / bekende.length
+      : 0.28;
+    const prijzen = prijsPerUur.map(v => v ?? gemiddelde);
+
+    // ── 2. Drempels berekenen ──────────────────────────────────────────────
+    const { laadDrempel, ontlaadDrempel } = berekenDrempels(prijzen);
+
+    // ── 3. Simulatie uitvoeren ─────────────────────────────────────────────
+    let socKwh    = BATTERIJ_CAPACITEIT_KWH * SOC_START_PCT / 100;
+    const minKwh  = BATTERIJ_CAPACITEIT_KWH * BAT_MIN_PCT  / 100;
+    const maxKwh  = BATTERIJ_CAPACITEIT_KWH * BAT_MAX_PCT  / 100;
+
+    let totaalLadenKwh    = 0;
+    let totaalOntlaadKwh  = 0;
+    let kostenLaden       = 0;
+    let opbrengstOntladen = 0;
+
+    const uren = prijzen.map((prijs, uur) => {
+      const socPct    = (socKwh / BATTERIJ_CAPACITEIT_KWH) * 100;
+      const beslissing = bepaalBeslissing(prijs, socPct, laadDrempel, ontlaadDrempel);
+
+      let kwhDelta  = 0;
+      let euroDelta = 0;
+
+      if (beslissing === 'laden') {
+        const ruimte    = maxKwh - socKwh;
+        const laadKwh   = Math.min(LAAD_VERMOGEN_KW, ruimte);
+        if (laadKwh > 0.01) {
+          socKwh          += laadKwh;
+          kwhDelta         = +laadKwh.toFixed(3);
+          euroDelta        = -(laadKwh * prijs);  // negatief = uitgave
+          kostenLaden     += laadKwh * prijs;
+          totaalLadenKwh  += laadKwh;
+        }
+      } else if (beslissing === 'ontladen') {
+        const beschikbaar  = socKwh - minKwh;
+        const ontlaadKwh   = Math.min(ONTLAAD_VERMOGEN_KW, beschikbaar);
+        if (ontlaadKwh > 0.01) {
+          socKwh              -= ontlaadKwh;
+          kwhDelta             = -ontlaadKwh;  // negatief = ontladen
+          euroDelta            = +(ontlaadKwh * prijs);  // positief = inkomsten
+          opbrengstOntladen   += ontlaadKwh * prijs;
+          totaalOntlaadKwh    += ontlaadKwh;
+        }
+      }
+
+      return {
+        uur,
+        tijdLabel:   `${String(uur).padStart(2, '0')}:00`,
+        prijs:       +prijs.toFixed(4),
+        beslissing,
+        socPct:      +((socKwh / BATTERIJ_CAPACITEIT_KWH) * 100).toFixed(1),
+        kwhDelta:    +kwhDelta.toFixed(3),
+        euroDelta:   +euroDelta.toFixed(4),
+      };
+    });
+
+    const wearKosten  = (totaalLadenKwh + totaalOntlaadKwh) * WEAR_PER_KWH;
+    const nettoWinst  = opbrengstOntladen - kostenLaden - wearKosten;
+
+    // ── 4. Actuele data uit DB ────────────────────────────────────────────
+    const sql = neon(process.env.DATABASE_URL);
+    const rows = await sql`
+      SELECT winst_euro, solar_yield_kwh, verbruik_kwh, net_import_kwh, net_export_kwh
+      FROM energie_data
+      WHERE datum = ${datumStr}::date
+      LIMIT 1
+    `.catch(() => []);
+
+    const actueel = rows[0] ?? null;
+
+    return Response.json({
+      success: true,
+      datum:   datumStr,
+      drempels: {
+        laadDrempel:    +laadDrempel.toFixed(4),
+        ontlaadDrempel: +ontlaadDrempel.toFixed(4),
+      },
+      simulatie: {
+        socStartPct:       SOC_START_PCT,
+        socEindPct:        +uren[23].socPct,
+        totaalLadenKwh:    +totaalLadenKwh.toFixed(2),
+        totaalOntlaadKwh:  +totaalOntlaadKwh.toFixed(2),
+        kostenLaden:       +kostenLaden.toFixed(2),
+        opbrengstOntladen: +opbrengstOntladen.toFixed(2),
+        wearKosten:        +wearKosten.toFixed(2),
+        nettoWinst:        +nettoWinst.toFixed(2),
+      },
+      actueel: actueel ? {
+        winst_euro:       +parseFloat(actueel.winst_euro).toFixed(2),
+        solar_yield_kwh:  +parseFloat(actueel.solar_yield_kwh || 0).toFixed(2),
+        verbruik_kwh:     +parseFloat(actueel.verbruik_kwh || 0).toFixed(2),
+        net_import_kwh:   +parseFloat(actueel.net_import_kwh || 0).toFixed(2),
+        net_export_kwh:   +parseFloat(actueel.net_export_kwh || 0).toFixed(2),
+      } : null,
+      uren,
+    });
+
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 500 });
+  }
+}

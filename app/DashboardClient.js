@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, ReferenceArea } from 'recharts';
+import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, ReferenceArea, ComposedChart, Area } from 'recharts';
 
 const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-03');
@@ -142,6 +142,9 @@ export default function DashboardClient({ data }) {
         </div>
 
         <OnbalansTegel />
+        <TennetOnbalans />
+        <EssSetpuntControle />
+        <AlgoritmeSimulatie />
         <BatterijRealisatie />
         <P1Vergelijking />
 
@@ -825,4 +828,502 @@ function RefreshButton() {
 function cumulatief(data) {
   let som = 0;
   return data.map(d => ({ datum: d.datum, cumulatief: +(som += parseFloat(d.winst_euro || 0)).toFixed(2) }));
+}
+
+// ── TenneT Onbalans Markt ──────────────────────────────────────────────────
+const SPIKE_UP_DREMPEL   = 350; // €/MWh — boven dit = echt interessant (duidelijk boven EPEX+belasting)
+const SPIKE_DOWN_DREMPEL = 0;   // €/MWh — onder dit (negatief) = interessant om te laden
+
+// ESS setpunt waarden (gedeeld door TennetOnbalans + EssSetpuntControle)
+const ESS_LADEN_WATT    =  9000; // +9 kW van net halen (gemeten max: 9.7 kW)
+const ESS_ONTLADEN_WATT = -9000; // -9 kW naar net sturen
+const ESS_AUTO_WATT     =    50; // Victron ESS standaard
+
+function TennetOnbalans() {
+  const [data,        setData]        = useState(null);
+  const [live,        setLive]        = useState(null);
+  const [loading,     setLoading]     = useState(true);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [fout,        setFout]        = useState(null);
+  const [cmdBezig,    setCmdBezig]    = useState(false);
+  const [cmdBevestig, setCmdBevestig] = useState(null);
+
+  async function laden() {
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/tennet?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success) setData(json);
+      else setFout(json.bericht || json.error || 'Geen data');
+    } catch (e) { setFout(e.message); }
+    setLoading(false);
+  }
+
+  async function stuurSpikeCommando(watt, label, reden) {
+    setCmdBezig(true);
+    setCmdBevestig(null);
+    try {
+      const res  = await fetch(`/api/stuur?secret=Nummer14!`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ watt, reden, bron: 'onbalans-spike' }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setCmdBevestig(`✓ ${label} gestuurd — Cerbo past toe binnen ~30 s`);
+        setTimeout(() => setCmdBevestig(null), 6000);
+      }
+    } catch {}
+    setCmdBezig(false);
+  }
+
+  async function ladenLive() {
+    setLiveLoading(true);
+    try {
+      const res  = await fetch(`/api/tennet?secret=Nummer14!&live=true&t=${Date.now()}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success) setLive(json);
+    } catch {}
+    setLiveLoading(false);
+  }
+
+  useEffect(() => {
+    laden();
+    ladenLive();
+    const iv = setInterval(ladenLive, 30 * 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const stateBarKleur = (state) => {
+    if (state === 1)  return '#f87171';
+    if (state === -1) return '#60a5fa';
+    if (state === 2)  return '#fb923c';
+    return '#4b5563';
+  };
+
+  // Is het huidige moment een uitschieter?
+  const lv           = live?.laatste;
+  const isSpike      = lv && (lv.midPrijs >= SPIKE_UP_DREMPEL || lv.midPrijs <= SPIKE_DOWN_DREMPEL);
+  const spikeRichting = lv?.midPrijs >= SPIKE_UP_DREMPEL ? 'up' : lv?.midPrijs <= SPIKE_DOWN_DREMPEL ? 'down' : null;
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="font-semibold text-gray-200">⚡ Onbalans Markt (TenneT)</h2>
+        <button onClick={laden} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">↻ verversen</button>
+      </div>
+
+      {/* ── Live indicator ── */}
+      {isSpike ? (
+        // UITSCHIETER — groot en opvallend
+        <div className={`rounded-lg px-5 py-4 mb-4 border-2 ${
+          spikeRichting === 'up'
+            ? 'bg-red-950 border-red-500 animate-pulse'
+            : 'bg-blue-950 border-blue-500 animate-pulse'
+        }`}>
+          <p className="text-xs font-semibold tracking-widest uppercase mb-1 text-yellow-400">
+            🚨 Onbalans uitschieter
+          </p>
+          <p className={`text-2xl font-bold ${spikeRichting === 'up' ? 'text-red-300' : 'text-blue-300'}`}>
+            {spikeRichting === 'up'
+              ? `↑ ONTLADEN — €${lv.midPrijs}/MWh`
+              : `↓ LADEN — €${lv.midPrijs}/MWh (negatief)`}
+          </p>
+          <p className="text-gray-300 text-sm mt-1">
+            {spikeRichting === 'up'
+              ? `Prijs boven €${SPIKE_UP_DREMPEL}/MWh — nu ontladen levert veel meer op dan EPEX`
+              : `Prijs onder €${SPIKE_DOWN_DREMPEL}/MWh — nu laden kost niets of levert op`}
+          </p>
+          <p className="text-gray-500 text-xs mt-2">{lv.t} UTC · aFRR↑ {lv.afrrIn} MW / aFRR↓ {lv.afrrOut} MW</p>
+
+          {/* Snelknop — nog niet actief */}
+          <div className="mt-3">
+            <span className="text-xs text-yellow-600 italic">
+              ⚠️ Automatisch handelen nog niet actief — eerst Node-RED op Cerbo GX instellen
+            </span>
+          </div>
+        </div>
+      ) : (
+        // Rustig — kleine neutrale balk
+        <div className="rounded-lg px-4 py-2 mb-4 bg-gray-700 border border-gray-600 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-gray-500 inline-block"/>
+            <p className="text-gray-400 text-sm">
+              {liveLoading ? 'Live laden...' : lv
+                ? `Onbalans rustig — €${lv.midPrijs}/MWh · aFRR↑ ${lv.afrrIn} / aFRR↓ ${lv.afrrOut} MW`
+                : 'Geen live data'}
+            </p>
+          </div>
+          {lv && <p className="text-gray-600 text-xs ml-auto">{lv.t} UTC · elke 30s · alert bij &gt;€{SPIKE_UP_DREMPEL} of &lt;€{SPIKE_DOWN_DREMPEL}/MWh</p>}
+        </div>
+      )}
+
+      {/* ── Gisteren settlement ── */}
+      {loading && <p className="text-gray-500 text-sm">Laden...</p>}
+      {fout    && <p className="text-red-400 text-sm">{fout}</p>}
+
+      {data && (
+        <>
+          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide mb-3">
+            Gisteren ({data.datum}) — settlement resultaat
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="border border-gray-700 rounded-lg p-3 text-center">
+              <p className="text-red-400 text-xs mb-1">↑ UP periodes</p>
+              <p className="text-white font-bold text-lg">{data.samenvatting.aantalUp}</p>
+              <p className="text-gray-500 text-xs">max €{data.samenvatting.maxUpEurMwh}/MWh</p>
+            </div>
+            <div className="border border-gray-700 rounded-lg p-3 text-center">
+              <p className="text-blue-400 text-xs mb-1">↓ DOWN periodes</p>
+              <p className="text-white font-bold text-lg">{data.samenvatting.aantalDown}</p>
+              <p className="text-gray-500 text-xs">max €{data.samenvatting.maxDownEurMwh}/MWh</p>
+            </div>
+            <div className="border border-gray-700 rounded-lg p-3 text-center">
+              <p className="text-green-400 text-xs mb-1">Sim. spike winst</p>
+              <p className="text-green-400 font-bold text-lg">€{data.samenvatting.simWinstUp.toFixed(2)}</p>
+              <p className="text-gray-500 text-xs">{data.samenvatting.kwhPerPtu} kWh/PTU</p>
+            </div>
+            <div className="border border-gray-700 rounded-lg p-3 text-center">
+              <p className="text-emerald-400 text-xs mb-1">Sim. totaal dag</p>
+              <p className="text-emerald-400 font-bold text-lg">€{data.samenvatting.simTotaal.toFixed(2)}</p>
+              <p className="text-gray-500 text-xs">UP + DOWN</p>
+            </div>
+          </div>
+
+          <p className="text-gray-600 text-xs mb-2">Settlement prijzen per PTU (15 min) — rood=UP, blauw=DOWN</p>
+          <ResponsiveContainer width="100%" height={70}>
+            <BarChart data={data.grafiek} barCategoryGap={1} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <Bar dataKey="shortageEurMwh" radius={0}>
+                {data.grafiek.map((p, i) => (
+                  <Cell key={i} fill={stateBarKleur(p.state)} />
+                ))}
+              </Bar>
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const p = payload[0]?.payload;
+                  return (
+                    <div className="bg-gray-900 text-xs text-gray-200 p-2 rounded border border-gray-700">
+                      <p className="font-medium">{p.t}</p>
+                      <p>{p.state === 1 ? '↑ UP' : p.state === -1 ? '↓ DOWN' : 'Neutraal'}</p>
+                      <p>Shortage: €{p.shortageEurMwh}/MWh</p>
+                      <p>Surplus:  €{p.surplusEurMwh}/MWh</p>
+                    </div>
+                  );
+                }}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── ESS Grid Setpunt Bediening ─────────────────────────────────────────────
+// Stuurt een grid-setpunt commando naar de DB.
+// Node-RED op de Cerbo GX pollt /api/commando elke 30s en past het toe via MQTT:
+//   Topic:   W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint
+//   Payload: {"value": <watt>}
+//
+// Positief watt = importeren van net (batterij opladen)
+// Negatief watt = exporteren naar net (batterij ontladen)
+// 50            = ESS auto-modus (Victron standaard)
+
+function EssSetpuntControle() {
+  const [commando,    setCommando]   = useState(null);
+  const [loading,     setLoading]    = useState(true);
+  const [bezig,       setBezig]      = useState(false);
+  const [bevestiging, setBevestiging]= useState(null);
+  const [fout,        setFout]       = useState(null);
+
+  async function haalCommando() {
+    try {
+      const res  = await fetch(`/api/stuur?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success) setCommando(json.commando);
+    } catch {}
+    setLoading(false);
+  }
+
+  async function stuurCommando(watt, label, reden) {
+    setBezig(true);
+    setFout(null);
+    setBevestiging(null);
+    try {
+      const res  = await fetch(`/api/stuur?secret=Nummer14!`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ watt, reden, bron: 'dashboard' }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setCommando(json.commando);
+        setBevestiging({ label, kleur: watt > 100 ? 'text-blue-400' : watt < -100 ? 'text-orange-400' : 'text-green-400' });
+        setTimeout(() => setBevestiging(null), 4000);
+      } else {
+        setFout(json.error || 'Fout bij versturen');
+      }
+    } catch (e) { setFout(e.message); }
+    setBezig(false);
+  }
+
+  useEffect(() => {
+    haalCommando();
+  }, []);
+
+  const huidigWatt = commando?.watt ?? null;
+  const isLaden    = huidigWatt != null && huidigWatt >= 1000;
+  const isOntladen = huidigWatt != null && huidigWatt <= -1000;
+  const isAuto     = !isLaden && !isOntladen;
+
+  const statusLabel = loading
+    ? '…'
+    : huidigWatt == null
+      ? 'Geen commando'
+      : isLaden
+        ? `LADEN  +${(huidigWatt / 1000).toFixed(0)} kW`
+        : isOntladen
+          ? `ONTLADEN  ${(huidigWatt / 1000).toFixed(0)} kW`
+          : `AUTO  (${huidigWatt} W)`;
+
+  const statusKleur = isLaden ? 'text-blue-400' : isOntladen ? 'text-orange-400' : 'text-green-400';
+
+  const tijdLabel = commando?.aangemaakt
+    ? new Date(commando.aangemaakt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+    : null;
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="font-semibold text-gray-200">🎛️ ESS Grid Setpunt</h2>
+        <button onClick={haalCommando} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">↻ vernieuwen</button>
+      </div>
+
+      {/* Huidig actief commando */}
+      <div className="border border-gray-700 rounded-lg px-4 py-3 mb-4 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="text-xs text-gray-500 mb-0.5">Actief commando</p>
+          <p className={`text-lg font-bold ${statusKleur}`}>{statusLabel}</p>
+        </div>
+        <div className="text-right text-xs text-gray-500">
+          {tijdLabel && <p>{tijdLabel} · {commando?.bron ?? '—'}</p>}
+          {commando?.reden && <p className="text-gray-600 italic">{commando.reden}</p>}
+          {commando?.uitgevoerd
+            ? <p className="text-green-600">✓ ontvangen door Cerbo</p>
+            : commando && <p className="text-yellow-600">⏳ wacht op Cerbo GX poll</p>}
+        </div>
+      </div>
+
+      {/* Nog niet actief — knoppen worden pas ingeschakeld als Node-RED is geconfigureerd */}
+      <div className="rounded-lg border border-yellow-700 bg-yellow-950 px-4 py-3 mb-3 flex items-start gap-2">
+        <span className="text-yellow-400 text-lg leading-none mt-0.5">⚠️</span>
+        <div>
+          <p className="text-yellow-300 text-sm font-semibold">Besturing nog niet actief</p>
+          <p className="text-yellow-600 text-xs mt-0.5">
+            De infrastructuur is gereed (DB-tabel, API-endpoints), maar de batterij wordt nog niet aangestuurd.
+            Zodra Node-RED op de Cerbo GX is ingesteld en getest, worden de knoppen hieronder ingeschakeld.
+          </p>
+        </div>
+      </div>
+
+      {/* Knoppen — disabled zolang besturing niet actief is */}
+      <div className="grid grid-cols-3 gap-3 mb-3 opacity-40 pointer-events-none select-none">
+        <div className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-400 text-center">
+          ↓ LADEN
+          <span className="block text-xs font-normal mt-0.5 opacity-70">+9 kW van net</span>
+        </div>
+        <div className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-400 text-center">
+          ⚡ AUTO
+          <span className="block text-xs font-normal mt-0.5 opacity-70">ESS beslist</span>
+        </div>
+        <div className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-400 text-center">
+          ↑ ONTLADEN
+          <span className="block text-xs font-normal mt-0.5 opacity-70">−9 kW naar net</span>
+        </div>
+      </div>
+
+      <p className="text-gray-600 text-xs mt-3 text-center">
+        Volgende stap: Node-RED flow instellen op Cerbo GX →
+        MQTT <code className="text-gray-500">W/…/settings/0/Settings/CGwacs/AcPowerSetPoint</code>
+      </p>
+    </div>
+  );
+}
+
+// ── Algoritme Simulatie ────────────────────────────────────────────────────
+// Toont wat het handelsalgoritme gisteren had beslist per uur,
+// hoe de SOC dan had gelopen, en wat het gesimuleerde resultaat is
+// t.o.v. de werkelijke winst uit VRM.
+
+const BESLISSING_KLEUR = {
+  laden:    '#60a5fa', // blauw
+  ontladen: '#f97316', // oranje
+  wachten:  '#4b5563', // grijs
+  stop:     '#ef4444', // rood
+};
+
+function AlgoritmeSimulatie() {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fout,    setFout]    = useState(null);
+  const [datum,   setDatum]   = useState('');
+
+  async function laden(d) {
+    setLoading(true);
+    setFout(null);
+    const param = d ? `&datum=${d}` : '';
+    try {
+      const res  = await fetch(`/api/simulatie?secret=Nummer14!${param}&t=${Date.now()}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success) setData(json);
+      else setFout(json.bericht || json.error || 'Geen data');
+    } catch (e) { setFout(e.message); }
+    setLoading(false);
+  }
+
+  useEffect(() => { laden(''); }, []);
+
+  const verschil = data
+    ? data.simulatie.nettoWinst - (data.actueel?.winst_euro ?? 0)
+    : null;
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <h2 className="font-semibold text-gray-200">🧪 Algoritme Simulatie</h2>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={datum}
+            onChange={e => setDatum(e.target.value)}
+            className="bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 focus:outline-none"
+          />
+          <button
+            onClick={() => laden(datum)}
+            className="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 rounded border border-gray-600 transition-colors"
+          >
+            Bereken
+          </button>
+        </div>
+      </div>
+
+      {loading && <p className="text-gray-500 text-sm">Berekenen...</p>}
+      {fout    && <p className="text-red-400 text-sm">{fout}</p>}
+
+      {data && (
+        <>
+          <p className="text-gray-500 text-xs mb-4">
+            {data.datum} · SOC start {data.simulatie.socStartPct}% → eind {data.simulatie.socEindPct}% ·
+            laaddrempel €{data.drempels.laadDrempel}/kWh · ontlaaddrempel €{data.drempels.ontlaadDrempel}/kWh
+          </p>
+
+          {/* Vergelijking sim vs actueel */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <div className="border border-blue-800 rounded-lg p-3 text-center">
+              <p className="text-blue-400 text-xs mb-1">Sim. laden</p>
+              <p className="text-white font-bold">{data.simulatie.totaalLadenKwh} kWh</p>
+              <p className="text-gray-500 text-xs">€{data.simulatie.kostenLaden} kosten</p>
+            </div>
+            <div className="border border-orange-800 rounded-lg p-3 text-center">
+              <p className="text-orange-400 text-xs mb-1">Sim. ontladen</p>
+              <p className="text-white font-bold">{data.simulatie.totaalOntlaadKwh} kWh</p>
+              <p className="text-gray-500 text-xs">€{data.simulatie.opbrengstOntladen} opbrengst</p>
+            </div>
+            <div className={`border rounded-lg p-3 text-center ${data.simulatie.nettoWinst >= 0 ? 'border-green-800' : 'border-red-800'}`}>
+              <p className="text-green-400 text-xs mb-1">Sim. netto winst</p>
+              <p className={`font-bold text-lg ${data.simulatie.nettoWinst >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                €{data.simulatie.nettoWinst.toFixed(2)}
+              </p>
+              <p className="text-gray-500 text-xs">−€{data.simulatie.wearKosten} slijtage</p>
+            </div>
+            <div className={`border rounded-lg p-3 text-center ${
+              data.actueel ? (data.actueel.winst_euro >= 0 ? 'border-emerald-800' : 'border-red-800') : 'border-gray-700'
+            }`}>
+              <p className="text-emerald-400 text-xs mb-1">Werkelijk (VRM)</p>
+              {data.actueel ? (
+                <>
+                  <p className={`font-bold text-lg ${data.actueel.winst_euro >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    €{data.actueel.winst_euro.toFixed(2)}
+                  </p>
+                  <p className={`text-xs font-medium ${verschil >= 0 ? 'text-green-500' : 'text-orange-400'}`}>
+                    {verschil >= 0 ? `+€${verschil.toFixed(2)} sim-bonus` : `−€${Math.abs(verschil).toFixed(2)} sim-tekort`}
+                  </p>
+                </>
+              ) : (
+                <p className="text-gray-500 text-sm">Geen VRM data</p>
+              )}
+            </div>
+          </div>
+
+          {/* Grafiek: prijs per uur + SOC lijn */}
+          <p className="text-gray-500 text-xs mb-2">
+            Prijs per uur (kleur = algoritme-beslissing) · lijn = batterij SOC %
+          </p>
+          <div className="flex gap-3 text-xs text-gray-400 mb-2 flex-wrap">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#60a5fa'}}/>Laden</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#f97316'}}/>Ontladen</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{background:'#4b5563'}}/>Wachten</span>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <ComposedChart data={data.uren} margin={{ top: 4, right: 40, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis dataKey="tijdLabel" tick={{ fontSize: 9, fill: '#6B7280' }} interval={3} />
+              <YAxis
+                yAxisId="prijs"
+                orientation="left"
+                tick={{ fontSize: 9, fill: '#6B7280' }}
+                tickFormatter={v => `€${v.toFixed(2)}`}
+                domain={['auto', 'auto']}
+              />
+              <YAxis
+                yAxisId="soc"
+                orientation="right"
+                tick={{ fontSize: 9, fill: '#a78bfa' }}
+                tickFormatter={v => `${v}%`}
+                domain={[0, 100]}
+              />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0]?.payload;
+                  return (
+                    <div className="bg-gray-900 text-xs text-gray-200 p-2 rounded border border-gray-700 space-y-0.5">
+                      <p className="font-medium">{d.tijdLabel}</p>
+                      <p>Prijs: €{d.prijs}/kWh</p>
+                      <p style={{ color: BESLISSING_KLEUR[d.beslissing] }}>
+                        {d.beslissing.toUpperCase()}
+                        {d.kwhDelta !== 0 ? ` (${d.kwhDelta > 0 ? '+' : ''}${d.kwhDelta} kWh)` : ''}
+                      </p>
+                      <p style={{ color: '#a78bfa' }}>SOC: {d.socPct}%</p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar yAxisId="prijs" dataKey="prijs" radius={[2, 2, 0, 0]}>
+                {data.uren.map((u, i) => (
+                  <Cell key={i} fill={BESLISSING_KLEUR[u.beslissing] ?? '#4b5563'} />
+                ))}
+              </Bar>
+              <Line
+                yAxisId="soc"
+                type="monotone"
+                dataKey="socPct"
+                stroke="#a78bfa"
+                dot={false}
+                strokeWidth={2}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+
+          {/* Noot over aannames */}
+          <p className="text-gray-600 text-xs mt-3">
+            ℹ️ Aannames: SOC start {data.simulatie.socStartPct}%, max laad/ontlaadvermogen 10 kW/uur (gemeten max 9,7 kW), slijtage €0,01/kWh.
+            Werkelijk resultaat incl. zonneopbrengst en huisverbruik.
+          </p>
+        </>
+      )}
+    </div>
+  );
 }

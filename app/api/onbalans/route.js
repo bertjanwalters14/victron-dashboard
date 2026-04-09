@@ -13,8 +13,12 @@ const BAT_MAX_PCT             = 90;
 const BATTERIJ_CAPACITEIT_KWH = 32;
 
 // Groen modus drempels
-const GROEN_MAX_LADEN_PCT = 70;  // Alleen van net laden als batterij < 70%
-const GROEN_MIN_SOLAR_W   = 300; // Als live zon > 300W actief → niet laden van net
+const GROEN_MAX_LADEN_PCT = 70;   // Alleen van net laden als batterij < 70%
+const GROEN_MIN_SOLAR_W   = 300;  // Minimale zon voor groen-modus netten
+
+// Handel modus: zon moet echt goed schijnen voor "laden via zon" beslissing
+// Onder deze drempel: prijs bepaalt alles, zwakke zon telt niet mee
+const SOLAR_LADEN_DREMPEL = 2000; // W — bijv. 652W is amper genoeg voor het huis
 
 // Dynamische drempels: percentiel van de dagprijzen
 const PERCENTIEL_LADEN    = 25;
@@ -264,12 +268,12 @@ function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempe
   if (consumerPrijs >= ontlaadDrempel && (batterijPct === null || batterijPct > BAT_MIN_PCT)) {
     return { beslissing: 'ontladen', reden: `Prijs hoog (€${consumerPrijs.toFixed(4)} ≥ €${ontlaadDrempel.toFixed(4)})` };
   }
-  // Zon produceert actief → dat IS laden (van zon, niet van net)
-  if (solarW !== null && solarW > GROEN_MIN_SOLAR_W && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    return { beslissing: 'laden', reden: `Zon laadt batterij (${(solarW/1000).toFixed(1)} kW productie)` };
+  // Middenzone: zon schijnt echt goed → laden via zon
+  if (solarW !== null && solarW >= SOLAR_LADEN_DREMPEL && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    return { beslissing: 'laden', reden: `Zon schijnt goed (${(solarW/1000).toFixed(1)} kW) — laden via zon` };
   }
   if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    // Zon vult batterij vandaag nog → niet kopen van net
+    // Zon vult batterij vandaag nog → niet actief van net kopen
     if (zonResterendKwh !== null && batterijPct !== null) {
       const ruimteKwh = BATTERIJ_CAPACITEIT_KWH * (BAT_MAX_PCT - batterijPct) / 100;
       if (zonResterendKwh >= ruimteKwh * 0.8) {
@@ -278,7 +282,11 @@ function bepaalBeslissing(consumerPrijs, batterijPct, laadDrempel, ontlaadDrempe
     }
     return { beslissing: 'laden', reden: `Prijs laag (€${consumerPrijs.toFixed(4)} ≤ €${laadDrempel.toFixed(4)})` };
   }
-  return { beslissing: 'wachten', reden: `Prijs neutraal (€${consumerPrijs.toFixed(4)})` };
+  // Middenzone: prijs neutraal, zon laadt batterij automatisch
+  const zonNoot = (solarW !== null && solarW > 100)
+    ? ` · zon laadt batterij (${(solarW/1000).toFixed(1)} kW)`
+    : '';
+  return { beslissing: 'wachten', reden: `Prijs neutraal (€${consumerPrijs.toFixed(4)})${zonNoot}` };
 }
 
 // ── GROEN modus: zelfconsumptie is prio, surplus mag verkocht bij hoge prijs ──
@@ -299,9 +307,9 @@ function bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, ontlaadD
       : `nog ${zonResterendKwh.toFixed(1)} kWh zon vandaag`;
     return { beslissing: 'ontladen', reden: `Groen surplus: ${batterijPct}% vol, hoge prijs · ${zonReden}` };
   }
-  // Zon produceert actief → dat IS laden (van zon)
-  if (solarW !== null && solarW > GROEN_MIN_SOLAR_W && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
-    return { beslissing: 'laden', reden: `Zon laadt batterij (${(solarW/1000).toFixed(1)} kW productie)` };
+  // Zon schijnt echt goed → laden via zon
+  if (solarW !== null && solarW >= SOLAR_LADEN_DREMPEL && (batterijPct === null || batterijPct < BAT_MAX_PCT)) {
+    return { beslissing: 'laden', reden: `Zon schijnt goed (${(solarW/1000).toFixed(1)} kW) — laden via zon` };
   }
   // Zon vult batterij vandaag nog → laden (van zon)
   if (zonResterendKwh !== null && batterijPct !== null) {
@@ -314,7 +322,11 @@ function bepaalBeslissingGroen(consumerPrijs, batterijPct, laadDrempel, ontlaadD
   if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < GROEN_MAX_LADEN_PCT)) {
     return { beslissing: 'laden', reden: `Groen: prijs laag (€${consumerPrijs.toFixed(4)}) en batterij < ${GROEN_MAX_LADEN_PCT}%` };
   }
-  return { beslissing: 'wachten', reden: 'Groen: wachten op zon of lage prijs' };
+  // Middenzone: zon laadt batterij automatisch
+  const zonNoot = (solarW !== null && solarW > 100)
+    ? ` · zon laadt batterij (${(solarW/1000).toFixed(1)} kW)`
+    : '';
+  return { beslissing: 'wachten', reden: `Groen: wachten op zon of lage prijs${zonNoot}` };
 }
 
 // TenneT geeft prijzen in EUR/MWh — omrekenen naar EUR/kWh

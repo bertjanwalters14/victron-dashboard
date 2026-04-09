@@ -45,9 +45,46 @@ export async function GET(request) {
       )
     `;
 
+    // Verwijder niet-representatieve opstartdagen
+    const verwijder = searchParams.get('verwijder');
+    if (verwijder) {
+      const datums = verwijder.split(',').map(d => d.trim());
+      for (const datum of datums) {
+        await sql`DELETE FROM energie_data WHERE datum = ${datum}::date`;
+      }
+      return Response.json({ success: true, bericht: `Verwijderd: ${datums.join(', ')}` });
+    }
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS tennet_dag_cache (
+        datum             DATE PRIMARY KEY,
+        grafiek_json      TEXT NOT NULL,
+        samenvatting_json TEXT NOT NULL,
+        bijgewerkt        TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS ess_commando (
+        id         SERIAL PRIMARY KEY,
+        watt       INTEGER NOT NULL,
+        reden      TEXT,
+        bron       TEXT DEFAULT 'dashboard',
+        aangemaakt TIMESTAMPTZ DEFAULT NOW(),
+        uitgevoerd TIMESTAMPTZ
+      )
+    `;
+
+    // Zorg dat er altijd een standaard AUTO commando in de tabel staat
+    await sql`
+      INSERT INTO ess_commando (watt, reden, bron)
+      SELECT 50, 'Standaard ESS auto-modus', 'initialisatie'
+      WHERE NOT EXISTS (SELECT 1 FROM ess_commando)
+    `;
+
     return Response.json({
       success: true,
-      bericht: 'Migraties klaar: solar_w/grid_w/verbruik_w/essentieel_w/bat_w/bron kolommen + instellingen tabel aangemaakt',
+      bericht: 'Migraties klaar',
     });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
