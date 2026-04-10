@@ -30,16 +30,21 @@ export async function GET(request) {
 
   const sql = getDb();
 
-  // Haal het laatste commando op
-  const rows = await sql`
-    SELECT id, watt, reden, bron, aangemaakt, uitgevoerd
-    FROM ess_commando
-    ORDER BY aangemaakt DESC
-    LIMIT 1
-  `;
+  // Haal het laatste commando op — fallback naar 50W als tabel nog niet bestaat
+  let rows = [];
+  try {
+    rows = await sql`
+      SELECT id, watt, reden, bron, aangemaakt, uitgevoerd
+      FROM ess_commando
+      ORDER BY aangemaakt DESC
+      LIMIT 1
+    `;
+  } catch {
+    // Tabel bestaat nog niet → stuur veilig standaard
+    return Response.json({ commando: null, watt: 50 });
+  }
 
   if (!rows.length) {
-    // Geen commando → stuur ESS standaard (auto)
     return Response.json({ commando: null, watt: 50 });
   }
 
