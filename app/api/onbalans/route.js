@@ -599,15 +599,22 @@ export async function GET(request) {
     const { watt: setpuntWatt, veiligheid: setpuntVeiligheid } = berekenSetpunt(beslissing, batterijPct, socTijdstip);
 
     // 7. Als auto-besturing aan: schrijf commando naar DB (Node-RED pollt dit)
+    // Alleen schrijven als het setpunt veranderd is t.o.v. het laatste commando
     if (controleActief) {
-      await sql`
-        INSERT INTO ess_commando (watt, reden, bron)
-        VALUES (
-          ${setpuntWatt},
-          ${setpuntVeiligheid ?? reden},
-          'algoritme'
-        )
-      `.catch(e => console.error('ess_commando write mislukt:', e.message));
+      const laatste = await sql`
+        SELECT watt FROM ess_commando ORDER BY aangemaakt DESC LIMIT 1
+      `.catch(() => []);
+      const vorigeWatt = laatste[0]?.watt ?? null;
+      if (vorigeWatt !== setpuntWatt) {
+        await sql`
+          INSERT INTO ess_commando (watt, reden, bron)
+          VALUES (
+            ${setpuntWatt},
+            ${setpuntVeiligheid ?? reden},
+            'algoritme'
+          )
+        `.catch(e => console.error('ess_commando write mislukt:', e.message));
+      }
     }
 
     // 8. Opslaan in database — alleen prijs + beslissing
