@@ -411,6 +411,36 @@ function bepaalBeslissingGroen(huidigUur, consumerPrijs, batterijPct, laadDrempe
   return { beslissing: 'wachten', reden: `Groen: wachten op zon of lage prijs${zonNoot}` };
 }
 
+// ── Setpunt berekening met veiligheidslagen ───────────────────────────────
+// beslissing van het algoritme → watt-waarde voor het ESS grid setpunt
+// Veiligheidslagen worden in volgorde gecontroleerd vóór algoritme-beslissing
+function berekenSetpunt(beslissing, batterijPct, socTijdstip) {
+  const dataOudMs  = socTijdstip ? Date.now() - new Date(socTijdstip).getTime() : Infinity;
+  const dataVers   = dataOudMs < 5 * 60 * 1000; // sensordata minder dan 5 minuten oud
+
+  // Laag 1: SOC te laag → forceer laden ongeacht algoritme
+  if (batterijPct !== null && batterijPct < 12)
+    return { watt: 9000, veiligheid: `Noodladen: SOC ${batterijPct}% < 12%` };
+
+  // Laag 2: SOC te hoog → stop laden ongeacht algoritme
+  if (batterijPct !== null && batterijPct > 92)
+    return { watt: 50, veiligheid: `SOC vol: ${batterijPct}% > 92%` };
+
+  // Laag 3: ontladen zonder verse sensordata is te riskant
+  if (beslissing === 'ontladen' && (!dataVers || batterijPct === null)) {
+    const minOud = Math.round(dataOudMs / 60000);
+    return { watt: 50, veiligheid: `Ontladen gepauzeerd: sensordata ${minOud === Infinity ? '?' : minOud} min oud` };
+  }
+
+  // Algoritme-beslissing → setpunt
+  switch (beslissing) {
+    case 'laden':    return { watt:  9000, veiligheid: null };
+    case 'ontladen': return { watt: -9000, veiligheid: null };
+    case 'stop':     return { watt:  9000, veiligheid: 'Noodladen: stop-beslissing' };
+    default:         return { watt:    50, veiligheid: null }; // wachten
+  }
+}
+
 // TenneT geeft prijzen in EUR/MWh — omrekenen naar EUR/kWh
 function mwhNaarKwh(mwh) {
   return mwh / 1000;
@@ -509,11 +539,15 @@ export async function GET(request) {
     const tennetShortage = huidigTennet ? mwhNaarKwh(parseFloat(huidigTennet.shortage)) : null;
     const tennetSurplus  = huidigTennet ? mwhNaarKwh(parseFloat(huidigTennet.surplus))  : null;
 
-    // 3. Modus ophalen (handel / groen) — fallback naar handel als tabel nog niet bestaat
+    // 3. Modus + controle kill switch ophalen
     let modus = 'handel';
+    let controleActief = false;
     try {
-      const modusRows = await sql`SELECT waarde FROM instellingen WHERE sleutel = 'modus'`;
-      modus = modusRows[0]?.waarde ?? 'handel';
+      const instRows = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN ('modus', 'controle_actief')`;
+      for (const r of instRows) {
+        if (r.sleutel === 'modus')           modus          = r.waarde ?? 'handel';
+        if (r.sleutel === 'controle_actief') controleActief = r.waarde === 'true';
+      }
     } catch { /* instellingen tabel bestaat nog niet */ }
 
     // 4. Realtime sensordata ophalen uit database (gestuurd door Node-RED)
@@ -560,8 +594,22 @@ export async function GET(request) {
       batterijPct, essentieelW, gridW
     );
 
-    // 5. Opslaan in database — alleen prijs + beslissing (geen batterij_pct, want
-    //    dat hoort bij Node-RED rijen; anders vond de SOC-query deze rij als nieuwste)
+    // 6. Setpunt berekenen met veiligheidslagen
+    const { watt: setpuntWatt, veiligheid: setpuntVeiligheid } = berekenSetpunt(beslissing, batterijPct, socTijdstip);
+
+    // 7. Als auto-besturing aan: schrijf commando naar DB (Node-RED pollt dit)
+    if (controleActief) {
+      await sql`
+        INSERT INTO ess_commando (watt, reden, bron)
+        VALUES (
+          ${setpuntWatt},
+          ${setpuntVeiligheid ?? reden},
+          'algoritme'
+        )
+      `.catch(e => console.error('ess_commando write mislukt:', e.message));
+    }
+
+    // 8. Opslaan in database — alleen prijs + beslissing
     await sql`
       INSERT INTO onbalans_log (tijdstip, prijs_kwh, beslissing)
       VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing})
@@ -634,6 +682,9 @@ export async function GET(request) {
       socTijdstip: socTijdstip ? new Date(socTijdstip).toISOString() : null,
       beslissing,
       reden,
+      setpuntWatt,
+      setpuntVeiligheid,
+      controleActief,
       tennet: tennetShortage !== null ? {
         shortage: tennetShortage,
         surplus:  tennetSurplus,

@@ -1032,121 +1032,171 @@ function TennetOnbalans() {
 // 50            = ESS auto-modus (Victron standaard)
 
 function EssSetpuntControle() {
-  const [commando,    setCommando]   = useState(null);
-  const [loading,     setLoading]    = useState(true);
-  const [bezig,       setBezig]      = useState(false);
-  const [bevestiging, setBevestiging]= useState(null);
-  const [fout,        setFout]       = useState(null);
+  const [commando,     setCommando]    = useState(null);
+  const [loading,      setLoading]     = useState(true);
+  const [bezig,        setBezig]       = useState(false);
+  const [toggleBezig,  setToggleBezig] = useState(false);
+  const [controleAan,  setControleAan] = useState(false);
+  const [bevestiging,  setBevestiging] = useState(null);
+  const [fout,         setFout]        = useState(null);
 
-  async function haalCommando() {
+  async function haalStatus() {
+    setLoading(true);
     try {
-      const res  = await fetch(`/api/stuur?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success) setCommando(json.commando);
+      const [cmdRes, ctrlRes] = await Promise.all([
+        fetch(`/api/stuur?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' }),
+        fetch(`/api/controle?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' }),
+      ]);
+      const cmd  = await cmdRes.json();
+      const ctrl = await ctrlRes.json();
+      if (cmd.success)  setCommando(cmd.commando);
+      if (ctrl.success) setControleAan(ctrl.controle_actief);
     } catch {}
     setLoading(false);
   }
 
-  async function stuurCommando(watt, label, reden) {
+  async function toggleControle() {
+    setToggleBezig(true);
+    setFout(null);
+    try {
+      const res  = await fetch(`/api/controle?secret=Nummer14!`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ actief: !controleAan }),
+      });
+      const json = await res.json();
+      if (json.success) setControleAan(json.controle_actief);
+    } catch (e) { setFout(e.message); }
+    setToggleBezig(false);
+  }
+
+  async function stuurHandmatig(watt, label, reden) {
     setBezig(true);
     setFout(null);
-    setBevestiging(null);
     try {
       const res  = await fetch(`/api/stuur?secret=Nummer14!`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ watt, reden, bron: 'dashboard' }),
+        body:    JSON.stringify({ watt, reden, bron: 'handmatig' }),
       });
       const json = await res.json();
       if (json.success) {
         setCommando(json.commando);
-        setBevestiging({ label, kleur: watt > 100 ? 'text-blue-400' : watt < -100 ? 'text-orange-400' : 'text-green-400' });
+        setBevestiging(label);
         setTimeout(() => setBevestiging(null), 4000);
-      } else {
-        setFout(json.error || 'Fout bij versturen');
-      }
+      } else { setFout(json.error || 'Fout'); }
     } catch (e) { setFout(e.message); }
     setBezig(false);
   }
 
-  useEffect(() => {
-    haalCommando();
-  }, []);
+  useEffect(() => { haalStatus(); }, []);
 
   const huidigWatt = commando?.watt ?? null;
   const isLaden    = huidigWatt != null && huidigWatt >= 1000;
   const isOntladen = huidigWatt != null && huidigWatt <= -1000;
-  const isAuto     = !isLaden && !isOntladen;
-
-  const statusLabel = loading
-    ? '…'
-    : huidigWatt == null
-      ? 'Geen commando'
-      : isLaden
-        ? `LADEN  +${(huidigWatt / 1000).toFixed(0)} kW`
-        : isOntladen
-          ? `ONTLADEN  ${(huidigWatt / 1000).toFixed(0)} kW`
-          : `AUTO  (${huidigWatt} W)`;
-
-  const statusKleur = isLaden ? 'text-blue-400' : isOntladen ? 'text-orange-400' : 'text-green-400';
-
-  const tijdLabel = commando?.aangemaakt
+  const tijdLabel  = commando?.aangemaakt
     ? new Date(commando.aangemaakt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
     : null;
 
   return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
+
+      {/* Header + toggle */}
       <div className="flex justify-between items-center mb-4">
-        <h2 className="font-semibold text-gray-200">🎛️ ESS Grid Setpunt</h2>
-        <button onClick={haalCommando} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">↻ vernieuwen</button>
+        <h2 className="font-semibold text-gray-200">🎛️ ESS Batterijbesturing</h2>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">Auto-besturing</span>
+          <button
+            onClick={toggleControle}
+            disabled={toggleBezig}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
+              controleAan ? 'bg-green-500' : 'bg-gray-600'
+            }`}
+          >
+            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+              controleAan ? 'translate-x-6' : 'translate-x-1'
+            }`} />
+          </button>
+          <span className={`text-xs font-semibold ${controleAan ? 'text-green-400' : 'text-gray-500'}`}>
+            {controleAan ? 'AAN' : 'UIT'}
+          </span>
+        </div>
       </div>
+
+      {/* Status banner */}
+      {controleAan ? (
+        <div className="rounded-lg border border-green-700 bg-green-950 px-4 py-3 mb-4">
+          <p className="text-green-300 text-sm font-semibold">✓ Algoritme stuurt batterij aan</p>
+          <p className="text-green-700 text-xs mt-0.5">
+            Elke aanroep van het algoritme schrijft automatisch het correcte setpunt.
+            Node-RED past dit toe via MQTT op de Cerbo GX.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-gray-700 bg-gray-750 px-4 py-3 mb-4">
+          <p className="text-gray-400 text-sm font-semibold">Auto-besturing uitgeschakeld</p>
+          <p className="text-gray-600 text-xs mt-0.5">
+            Cerbo GX beheert de batterij zelf (ESS standaard). Gebruik de knoppen hieronder voor handmatige controle.
+          </p>
+        </div>
+      )}
 
       {/* Huidig actief commando */}
       <div className="border border-gray-700 rounded-lg px-4 py-3 mb-4 flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="text-xs text-gray-500 mb-0.5">Actief commando</p>
-          <p className={`text-lg font-bold ${statusKleur}`}>{statusLabel}</p>
+          <p className="text-xs text-gray-500 mb-0.5">Huidig setpunt (DB)</p>
+          <p className={`text-lg font-bold ${isLaden ? 'text-blue-400' : isOntladen ? 'text-orange-400' : 'text-green-400'}`}>
+            {loading ? '…' : huidigWatt == null ? '—'
+              : isLaden    ? `↓ LADEN  +${(huidigWatt/1000).toFixed(0)} kW`
+              : isOntladen ? `↑ ONTLADEN  ${(huidigWatt/1000).toFixed(0)} kW`
+              : `⚡ AUTO  (${huidigWatt} W)`}
+          </p>
         </div>
         <div className="text-right text-xs text-gray-500">
           {tijdLabel && <p>{tijdLabel} · {commando?.bron ?? '—'}</p>}
-          {commando?.reden && <p className="text-gray-600 italic">{commando.reden}</p>}
+          {commando?.reden && <p className="text-gray-600 italic truncate max-w-[200px]">{commando.reden}</p>}
           {commando?.uitgevoerd
             ? <p className="text-green-600">✓ ontvangen door Cerbo</p>
-            : commando && <p className="text-yellow-600">⏳ wacht op Cerbo GX poll</p>}
+            : commando && <p className="text-yellow-600">⏳ wacht op Cerbo GX</p>}
         </div>
       </div>
 
-      {/* Nog niet actief — knoppen worden pas ingeschakeld als Node-RED is geconfigureerd */}
-      <div className="rounded-lg border border-yellow-700 bg-yellow-950 px-4 py-3 mb-3 flex items-start gap-2">
-        <span className="text-yellow-400 text-lg leading-none mt-0.5">⚠️</span>
-        <div>
-          <p className="text-yellow-300 text-sm font-semibold">Besturing nog niet actief</p>
-          <p className="text-yellow-600 text-xs mt-0.5">
-            De infrastructuur is gereed (DB-tabel, API-endpoints), maar de batterij wordt nog niet aangestuurd.
-            Zodra Node-RED op de Cerbo GX is ingesteld en getest, worden de knoppen hieronder ingeschakeld.
-          </p>
-        </div>
-      </div>
-
-      {/* Knoppen — disabled zolang besturing niet actief is */}
-      <div className="grid grid-cols-3 gap-3 mb-3 opacity-40 pointer-events-none select-none">
-        <div className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-400 text-center">
+      {/* Handmatige knoppen — altijd beschikbaar als override */}
+      <p className="text-xs text-gray-500 mb-2">
+        {controleAan ? 'Handmatige override (overschrijft algoritme tijdelijk):' : 'Handmatige besturing:'}
+      </p>
+      <div className="grid grid-cols-3 gap-3 mb-3">
+        <button
+          onClick={() => stuurHandmatig(ESS_LADEN_WATT, 'LADEN +9 kW', 'Handmatig: laden van net')}
+          disabled={bezig}
+          className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-300 hover:border-blue-500 hover:text-blue-300 transition-all disabled:opacity-50"
+        >
           ↓ LADEN
           <span className="block text-xs font-normal mt-0.5 opacity-70">+9 kW van net</span>
-        </div>
-        <div className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-400 text-center">
+        </button>
+        <button
+          onClick={() => stuurHandmatig(ESS_AUTO_WATT, 'AUTO', 'Handmatig: ESS auto')}
+          disabled={bezig}
+          className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-300 hover:border-green-500 hover:text-green-300 transition-all disabled:opacity-50"
+        >
           ⚡ AUTO
           <span className="block text-xs font-normal mt-0.5 opacity-70">ESS beslist</span>
-        </div>
-        <div className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-400 text-center">
+        </button>
+        <button
+          onClick={() => stuurHandmatig(ESS_ONTLADEN_WATT, 'ONTLADEN −9 kW', 'Handmatig: ontladen naar net')}
+          disabled={bezig}
+          className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-300 hover:border-orange-500 hover:text-orange-300 transition-all disabled:opacity-50"
+        >
           ↑ ONTLADEN
           <span className="block text-xs font-normal mt-0.5 opacity-70">−9 kW naar net</span>
-        </div>
+        </button>
       </div>
 
+      {bevestiging && <p className="text-green-400 text-sm text-center">✓ {bevestiging} gestuurd — Node-RED past toe binnen ~30 s</p>}
+      {fout        && <p className="text-red-400  text-sm text-center">{fout}</p>}
+
       <p className="text-gray-600 text-xs mt-3 text-center">
-        Volgende stap: Node-RED flow instellen op Cerbo GX →
-        MQTT <code className="text-gray-500">W/…/settings/0/Settings/CGwacs/AcPowerSetPoint</code>
+        Node-RED: <code className="text-gray-500">GET /api/commando</code> → <code className="text-gray-500">{"W/{id}/settings/0/Settings/CGwacs/AcPowerSetPoint"}</code>
       </p>
     </div>
   );
