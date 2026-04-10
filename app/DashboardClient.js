@@ -1149,7 +1149,7 @@ function EssSetpuntControle() {
             {loading ? '…' : huidigWatt == null ? '—'
               : isLaden    ? `↓ LADEN  +${(huidigWatt/1000).toFixed(0)} kW`
               : isOntladen ? `↑ ONTLADEN  ${(huidigWatt/1000).toFixed(0)} kW`
-              : `⚡ AUTO  (${huidigWatt} W)`}
+              : controleAan ? `⏸ WACHTEN  (algoritme neutraal)` : `⚡ AUTO  (${huidigWatt} W)`}
           </p>
         </div>
         <div className="text-right text-xs text-gray-500">
