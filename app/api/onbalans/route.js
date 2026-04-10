@@ -334,7 +334,8 @@ function bepaalBeslissing(
     return { beslissing: 'ontladen', reden: `Avondpiek (${huidigUur}:00): €${consumerPrijs.toFixed(4)} → ontladen tot ${AVOND_RESERVE_PCT}%` };
 
   // ── Vóór avondpiek: ontladen alleen als herladen daarna kan ───
-  if (consumerPrijs >= ontlaadDrempel && huidigUur < AVOND_PIEK_START && (batterijPct === null || batterijPct > AVOND_RESERVE_PCT)) {
+  // +5% buffer boven reserve om te voorkomen dat we te vroeg ontladen bij calibratie-drift
+  if (consumerPrijs >= ontlaadDrempel && huidigUur < AVOND_PIEK_START && (batterijPct === null || batterijPct > AVOND_RESERVE_PCT + 5)) {
     const naOntlaadKwh = Math.max(0, socKwh - ONTLAAD_VERMOGEN_KW);
     const naHerlaadKwh = Math.min(naOntlaadKwh + maxHerlaadKwh, BATTERIJ_CAPACITEIT_KWH * BAT_MAX_PCT / 100);
     const beschikbaarVoorAvond = naHerlaadKwh - avondReserveKwh;
