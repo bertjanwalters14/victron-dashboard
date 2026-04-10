@@ -1196,7 +1196,7 @@ function EssSetpuntControle() {
       {fout        && <p className="text-red-400  text-sm text-center">{fout}</p>}
 
       <p className="text-gray-600 text-xs mt-3 text-center">
-        Node-RED: <code className="text-gray-500">GET /api/commando</code> → <code className="text-gray-500">{"W/{id}/settings/0/Settings/CGwacs/AcPowerSetPoint"}</code>
+        Node-RED: <code className="text-gray-500">GET /api/commando</code> → <code className="text-gray-500">W/934962/vebus/276/Hub4/L1/AcPowerSetpoint</code>
       </p>
     </div>
   );
