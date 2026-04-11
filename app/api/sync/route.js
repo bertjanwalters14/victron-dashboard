@@ -77,6 +77,8 @@ async function syncEénDag(datumStr) {
   const winstBg  = berekenSom('Bg');
   const winstBc  = berekenSom('Bc');
   const winstPc  = berekenSom('Pc');
+  const winstPb  = berekenSom('Pb');
+  const winstPg  = berekenSom('Pg');
   const kostenGc = berekenSom('Gc');
   const kostenGb = berekenSom('Gb');
 
@@ -91,6 +93,13 @@ async function syncEénDag(datumStr) {
   const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.01;
   const totaalWinst = winstBg + winstBc + winstPc - kostenGc - kostenGb - accuKosten;
 
+  // Counterfactual: wat zou het resultaat zijn zonder batterij?
+  // - Pb gaat naar net (Pg) i.p.v. naar batterij — zelfde uur, zelfde prijs
+  // - Bc moet van net komen (Gc) i.p.v. van batterij — zelfde uur, zelfde prijs
+  // - Geen Gb (geen laden van net) en geen Bg (geen export van batterij)
+  const winstZonderBat = winstPg + winstPb + winstPc - kostenGc - winstBc;
+  const batMeerwaarde  = totaalWinst - winstZonderBat;
+
   await upsertEnergieData({
     datum:           datumStr,
     solar_yield_kwh: PgKwh + PcKwh + PbKwh,
@@ -98,6 +107,7 @@ async function syncEénDag(datumStr) {
     net_import_kwh:  GbKwh + GcKwh,
     net_export_kwh:  BgKwh + PgKwh,
     winst_euro:      totaalWinst,
+    bat_meerwaarde:  batMeerwaarde,
   });
 
   return {
@@ -108,13 +118,15 @@ async function syncEénDag(datumStr) {
       totaalZon:      (PgKwh + PcKwh + PbKwh).toFixed(2),
       totaalOntladen: (BgKwh + BcKwh).toFixed(2),
     },
-    winstBg:    winstBg.toFixed(2),
-    winstBc:    winstBc.toFixed(2),
-    winstPc:    winstPc.toFixed(2),
-    kostenGc:   kostenGc.toFixed(2),
-    kostenGb:   kostenGb.toFixed(2),
-    accuKosten: accuKosten.toFixed(2),
-    winst:      totaalWinst.toFixed(2),
+    winstBg:       winstBg.toFixed(2),
+    winstBc:       winstBc.toFixed(2),
+    winstPc:       winstPc.toFixed(2),
+    kostenGc:      kostenGc.toFixed(2),
+    kostenGb:      kostenGb.toFixed(2),
+    accuKosten:    accuKosten.toFixed(2),
+    winst:         totaalWinst.toFixed(2),
+    winstZonderBat: winstZonderBat.toFixed(2),
+    batMeerwaarde: batMeerwaarde.toFixed(2),
   };
 }
 
@@ -132,6 +144,24 @@ export async function GET(request) {
   }
 
   try {
+    // Backfill: ?backfill=true → hersynct alle datums die al in energie_data staan
+    if (searchParams.get('backfill') === 'true') {
+      const { neon } = await import('@neondatabase/serverless');
+      const sql = neon(process.env.DATABASE_URL);
+      const bestaand = await sql`SELECT datum::text FROM energie_data ORDER BY datum ASC`;
+      const resultaten = [];
+      for (const { datum } of bestaand) {
+        const dagStr = datum.split('T')[0];
+        try {
+          const res = await syncEénDag(dagStr);
+          resultaten.push({ ...res, status: 'ok' });
+        } catch (e) {
+          resultaten.push({ datum: dagStr, status: 'fout', fout: e.message });
+        }
+      }
+      return Response.json({ success: true, prijsBron: 'anwb', backfill: true, dagen: resultaten });
+    }
+
     // Bulk-hersync: ?vanaf=2026-04-03  → synct alle dagen t/m gisteren
     const vanafParam = searchParams.get('vanaf');
     if (vanafParam) {

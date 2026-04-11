@@ -64,6 +64,8 @@ export async function GET(request) {
       )
     `;
 
+    await sql`ALTER TABLE energie_data ADD COLUMN IF NOT EXISTS bat_meerwaarde NUMERIC`;
+
     await sql`
       CREATE TABLE IF NOT EXISTS ess_commando (
         id         SERIAL PRIMARY KEY,
