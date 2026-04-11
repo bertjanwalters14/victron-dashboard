@@ -16,7 +16,6 @@ const INFO = {
 
 export default function DashboardClient({ data }) {
   const totaalWinst        = data.reduce((s, d) => s + parseFloat(d.winst_euro || 0), 0);
-  const totaalMeerwaarde   = data.reduce((s, d) => s + parseFloat(d.bat_meerwaarde || 0), 0);
   const aantalDagenData    = data.length;
   const gemDagwinst        = aantalDagenData > 0 ? totaalWinst / aantalDagenData : 0;
   const dagenTerugverdiend = gemDagwinst > 0 ? BATTERIJ_KOSTEN / gemDagwinst : null;
@@ -42,9 +41,8 @@ export default function DashboardClient({ data }) {
 
         <LiveVandaag />
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
           <Card label="Totale winst"    value={`€${totaalWinst.toFixed(2)}`}  color="text-green-400"  sub="sinds installatie"      info={INFO.winst} />
-          <Card label="Bat. meerwaarde" value={`€${totaalMeerwaarde.toFixed(2)}`} color="text-emerald-400" sub="extra t.o.v. geen batterij" />
           <Card label="ROI"             value={`${roiPct.toFixed(2)}%`}        color="text-blue-400"   sub="van €11.252"             info={INFO.roi} />
           <Card label="Gem. dagwinst"   value={`€${gemDagwinst.toFixed(2)}`}   color="text-yellow-400" sub={`over ${aantalDagenData} dag${aantalDagenData !== 1 ? 'en' : ''} data`} info={INFO.dagwinst} />
           <Card
@@ -123,7 +121,6 @@ export default function DashboardClient({ data }) {
                       <th className="text-right py-2">Zon (kWh)</th>
                       <th className="text-right py-2">Naar net</th>
                       <th className="text-right py-2">Winst</th>
-                      <th className="text-right py-2">Bat. bijdrage</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -133,7 +130,6 @@ export default function DashboardClient({ data }) {
                         <td className="py-2 text-right text-yellow-400">{parseFloat(d.solar_yield_kwh || 0).toFixed(1)}</td>
                         <td className="py-2 text-right text-blue-400">{parseFloat(d.net_export_kwh || 0).toFixed(2)}</td>
                         <td className="py-2 text-right text-green-400 font-medium">€{parseFloat(d.winst_euro || 0).toFixed(2)}</td>
-                        <td className="py-2 text-right text-emerald-400">{d.bat_meerwaarde != null ? `€${parseFloat(d.bat_meerwaarde).toFixed(2)}` : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
