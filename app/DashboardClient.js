@@ -444,17 +444,13 @@ function FlowCard({ icon, label, value, sub, kleur, badge }) {
 function ZonPrognose({ zon }) {
   if (!zon) return null;
 
-  // Vandaag gevolgd door morgen op één doorlopende tijdas
-  const uren = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0') + ':00');
+  // Vandaag gevolgd door morgen op één doorlopende tijdas (alle 30-min datapunten)
   const vandaagData = (zon.grafiekData || []).filter(d => d.dag === 'vandaag');
   const morgenData  = (zon.grafiekData || []).filter(d => d.dag === 'morgen');
-  const vandaagMap  = Object.fromEntries(vandaagData.map(d => [d.tijd, d.watt]));
-  const morgenMap   = Object.fromEntries(morgenData.map(d => [d.tijd, d.watt]));
   const aaneengesloten = [
-    ...uren.map(tijd => ({ label: `V ${tijd}`, watt: vandaagMap[tijd] ?? 0, dag: 'vandaag' })),
-    ...uren.map(tijd => ({ label: `M ${tijd}`, watt: morgenMap[tijd] ?? 0, dag: 'morgen' })),
+    ...vandaagData.map(d => ({ label: `V ${d.tijd}`, watt: d.watt, dag: 'vandaag' })),
+    ...morgenData.map(d => ({ label: `M ${d.tijd}`, watt: d.watt, dag: 'morgen' })),
   ];
-  const scheidingIndex = 24; // index waar morgen begint
 
   return (
     <div className="border-t border-gray-700 pt-4 space-y-3">

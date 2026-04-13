@@ -162,7 +162,7 @@ async function haalZonnePrognose(nu, sql) {
         if (!uurData[key]) {
           uurData[key] = { tijd: tijdLabel, watt: 0, dag: isVandaag ? 'vandaag' : 'morgen' };
         }
-        uurData[key].watt += watt / 2;
+        uurData[key].watt = watt;
       }
     }
 
@@ -186,7 +186,7 @@ async function haalZonnePrognose(nu, sql) {
         if (!uurData[key]) {
           uurData[key] = { tijd: tijdLabel, watt: 0, dag: 'vandaag' };
         }
-        uurData[key].watt += watt / 2;
+        uurData[key].watt = watt;
       }
     }
 
