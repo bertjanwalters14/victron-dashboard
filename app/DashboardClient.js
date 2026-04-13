@@ -476,10 +476,11 @@ function ZonPrognose({ zon }) {
             tickFormatter={v => v.slice(2)} />
           <YAxis tick={{ fontSize: 9, fill: '#6B7280' }} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} width={28} />
           <Tooltip
-            contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px', fontSize: 11 }}
-            labelStyle={{ color: '#9CA3AF' }}
+            contentStyle={{ background: '#1F2937', border: '1px solid #4B5563', borderRadius: '8px', fontSize: 12, color: '#F9FAFB' }}
+            labelStyle={{ color: '#D1D5DB', fontWeight: 600, marginBottom: 2 }}
+            itemStyle={{ color: '#FCD34D' }}
             labelFormatter={l => `${l.startsWith('V') ? 'Vandaag' : 'Morgen'} ${l.slice(2)}`}
-            formatter={v => [v >= 1000 ? `${(v/1000).toFixed(2)} kW` : `${v} W`]}
+            formatter={v => [v >= 1000 ? `${(v/1000).toFixed(2)} kW` : `${Math.round(v)} W`]}
           />
           <ReferenceLine x={`M 00:00`} stroke="#4B5563" strokeDasharray="4 2" label={{ value: 'morgen', position: 'insideTopRight', fontSize: 9, fill: '#6B7280' }} />
           <Bar dataKey="watt" radius={[2, 2, 0, 0]} isAnimationActive={false}>
