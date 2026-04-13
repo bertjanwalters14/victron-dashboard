@@ -444,12 +444,17 @@ function FlowCard({ icon, label, value, sub, kleur, badge }) {
 function ZonPrognose({ zon }) {
   if (!zon) return null;
 
-  // Vandaag gevolgd door morgen op één doorlopende tijdas (alle 30-min datapunten)
-  const vandaagData = (zon.grafiekData || []).filter(d => d.dag === 'vandaag');
-  const morgenData  = (zon.grafiekData || []).filter(d => d.dag === 'morgen');
+  // Vandaag gevolgd door morgen op één doorlopende tijdas (alle 48 halve-uur slots)
+  const slots = Array.from({ length: 48 }, (_, i) => {
+    const h = String(Math.floor(i / 2)).padStart(2, '0');
+    const m = i % 2 === 0 ? '00' : '30';
+    return `${h}:${m}`;
+  });
+  const vandaagMap = Object.fromEntries((zon.grafiekData || []).filter(d => d.dag === 'vandaag').map(d => [d.tijd, d.watt]));
+  const morgenMap  = Object.fromEntries((zon.grafiekData || []).filter(d => d.dag === 'morgen').map(d => [d.tijd, d.watt]));
   const aaneengesloten = [
-    ...vandaagData.map(d => ({ label: `V ${d.tijd}`, watt: d.watt, dag: 'vandaag' })),
-    ...morgenData.map(d => ({ label: `M ${d.tijd}`, watt: d.watt, dag: 'morgen' })),
+    ...slots.map(t => ({ label: `V ${t}`, watt: vandaagMap[t] ?? 0, dag: 'vandaag' })),
+    ...slots.map(t => ({ label: `M ${t}`, watt: morgenMap[t]  ?? 0, dag: 'morgen'  })),
   ];
 
   return (
