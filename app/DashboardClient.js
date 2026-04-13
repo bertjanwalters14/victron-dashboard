@@ -444,11 +444,17 @@ function FlowCard({ icon, label, value, sub, kleur, badge }) {
 function ZonPrognose({ zon }) {
   if (!zon) return null;
 
-  // Combineer vandaag + morgen op gedeelde tijdas
+  // Vandaag gevolgd door morgen op één doorlopende tijdas
   const uren = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0') + ':00');
-  const vandaagMap = Object.fromEntries((zon.grafiekData || []).filter(d => d.dag === 'vandaag').map(d => [d.tijd, d.watt]));
-  const morgenMap  = Object.fromEntries((zon.grafiekData || []).filter(d => d.dag === 'morgen').map(d => [d.tijd, d.watt]));
-  const gecombineerd = uren.map(tijd => ({ tijd, vandaag: vandaagMap[tijd] ?? 0, morgen: morgenMap[tijd] ?? 0 }));
+  const vandaagData = (zon.grafiekData || []).filter(d => d.dag === 'vandaag');
+  const morgenData  = (zon.grafiekData || []).filter(d => d.dag === 'morgen');
+  const vandaagMap  = Object.fromEntries(vandaagData.map(d => [d.tijd, d.watt]));
+  const morgenMap   = Object.fromEntries(morgenData.map(d => [d.tijd, d.watt]));
+  const aaneengesloten = [
+    ...uren.map(tijd => ({ label: `V ${tijd}`, watt: vandaagMap[tijd] ?? 0, dag: 'vandaag' })),
+    ...uren.map(tijd => ({ label: `M ${tijd}`, watt: morgenMap[tijd] ?? 0, dag: 'morgen' })),
+  ];
+  const scheidingIndex = 24; // index waar morgen begint
 
   return (
     <div className="border-t border-gray-700 pt-4 space-y-3">
@@ -462,19 +468,25 @@ function ZonPrognose({ zon }) {
         </div>
       </div>
 
-      {/* Gecombineerde grafiek op gedeelde Y-as */}
+      {/* Doorlopende grafiek: vandaag → morgen, gedeelde Y-as */}
       <ResponsiveContainer width="100%" height={150}>
-        <BarChart data={gecombineerd} barCategoryGap="20%" barGap={2} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <BarChart data={aaneengesloten} barCategoryGap="10%" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-          <XAxis dataKey="tijd" tick={{ fontSize: 9, fill: '#6B7280' }} interval={3} />
+          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#6B7280' }} interval={5}
+            tickFormatter={v => v.slice(2)} />
           <YAxis tick={{ fontSize: 9, fill: '#6B7280' }} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} width={28} />
           <Tooltip
             contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px', fontSize: 11 }}
             labelStyle={{ color: '#9CA3AF' }}
-            formatter={(v, name) => [v >= 1000 ? `${(v/1000).toFixed(2)} kW` : `${v} W`, name === 'vandaag' ? 'Vandaag' : 'Morgen']}
+            labelFormatter={l => `${l.startsWith('V') ? 'Vandaag' : 'Morgen'} ${l.slice(2)}`}
+            formatter={v => [v >= 1000 ? `${(v/1000).toFixed(2)} kW` : `${v} W`]}
           />
-          <Bar dataKey="vandaag" fill="#F59E0B" radius={[2, 2, 0, 0]} isAnimationActive={false} />
-          <Bar dataKey="morgen"  fill="#FB923C" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+          <ReferenceLine x={`M 00:00`} stroke="#4B5563" strokeDasharray="4 2" label={{ value: 'morgen', position: 'insideTopRight', fontSize: 9, fill: '#6B7280' }} />
+          <Bar dataKey="watt" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+            {aaneengesloten.map((d, i) => (
+              <Cell key={i} fill={d.dag === 'vandaag' ? '#F59E0B' : '#FB923C'} />
+            ))}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
 
