@@ -143,7 +143,7 @@ export default function DashboardClient({ data }) {
 
         <OnbalansTegel />
         {/* <TennetOnbalans /> */}
-        <EssSetpuntControle />
+        {/* <EssSetpuntControle /> */}
         <p className="text-center text-gray-600 text-xs mt-6">
           Data wordt elke nacht om 00:01 automatisch bijgewerkt
         </p>
