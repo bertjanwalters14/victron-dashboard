@@ -91,7 +91,7 @@ async function syncEénDag(datumStr) {
   const GcKwh = totaalKwh('Gc');
 
   const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.01;
-  const totaalWinst = winstBg + winstBc + winstPc - kostenGc - kostenGb - accuKosten;
+  const totaalWinst = winstBg + winstBc - kostenGb - accuKosten;
 
   // Counterfactual: wat zou het resultaat zijn zonder batterij?
   // - Pb gaat naar net (Pg) i.p.v. naar batterij — zelfde uur, zelfde prijs
