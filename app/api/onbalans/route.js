@@ -401,15 +401,11 @@ function bepaalBeslissingGroen(huidigUur, consumerPrijs, batterijPct, laadDrempe
       return { beslissing: 'laden', reden: `Zon vult batterij vandaag (${zonResterendKwh.toFixed(1)} kWh verwacht)` };
     }
   }
-  // Goedkoop + batterij heeft ruimte + geen zon op komst → laden van net
-  if (consumerPrijs <= laadDrempel && (batterijPct === null || batterijPct < GROEN_MAX_LADEN_PCT)) {
-    return { beslissing: 'laden', reden: `Groen: prijs laag (€${consumerPrijs.toFixed(4)}) en batterij < ${GROEN_MAX_LADEN_PCT}%` };
-  }
   // Middenzone: zon laadt batterij automatisch
   const zonNoot = (solarW !== null && solarW > 100)
     ? ` · zon laadt batterij (${(solarW/1000).toFixed(1)} kW)`
     : '';
-  return { beslissing: 'wachten', reden: `Groen: wachten op zon of lage prijs${zonNoot}` };
+  return { beslissing: 'wachten', reden: `Groen: wachten op zon${zonNoot}` };
 }
 
 // ── Setpunt berekening met veiligheidslagen ───────────────────────────────
