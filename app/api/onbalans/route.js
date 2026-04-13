@@ -110,7 +110,7 @@ async function haalZonnePrognose(nu, sql) {
     const cacheRij = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'solcast_cache'`;
     if (cacheRij[0]) {
       const ouderdom = (nu - new Date(cacheRij[0].bijgewerkt)) / 60000; // minuten
-      if (ouderdom < 60) {
+      if (ouderdom < 240) {
         return JSON.parse(cacheRij[0].waarde);
       }
     }
