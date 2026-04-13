@@ -473,8 +473,8 @@ function ZonPrognose({ zon }) {
       <ResponsiveContainer width="100%" height={150}>
         <BarChart data={aaneengesloten} barCategoryGap="10%" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#6B7280' }} interval={5}
-            tickFormatter={v => v.slice(2)} />
+          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#6B7280' }} interval={1}
+            tickFormatter={v => v.endsWith(':00') ? v.slice(2) : ''} />
           <YAxis tick={{ fontSize: 9, fill: '#6B7280' }} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} width={28} />
           <Tooltip
             contentStyle={{ background: '#1F2937', border: '1px solid #4B5563', borderRadius: '8px', fontSize: 12, color: '#F9FAFB' }}
