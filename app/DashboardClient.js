@@ -444,22 +444,11 @@ function FlowCard({ icon, label, value, sub, kleur, badge }) {
 function ZonPrognose({ zon }) {
   if (!zon) return null;
 
-  const vandaagData = (zon.grafiekData || []).filter(d => d.dag === 'vandaag');
-  const morgenData  = (zon.grafiekData || []).filter(d => d.dag === 'morgen');
-
-  const chartProps = {
-    barCategoryGap: '15%',
-    margin: { top: 4, right: 4, left: 0, bottom: 0 },
-  };
-  const axisProps = {
-    xAxis: { tick: { fontSize: 9, fill: '#6B7280' }, interval: 1 },
-    yAxis: { tick: { fontSize: 9, fill: '#6B7280' }, tickFormatter: v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v, width: 28 },
-  };
-  const tooltipStyle = {
-    contentStyle: { background: '#111827', border: '1px solid #374151', borderRadius: '8px', fontSize: 11 },
-    labelStyle:   { color: '#9CA3AF' },
-    formatter:    v => [v >= 1000 ? `${(v/1000).toFixed(2)} kW` : `${v} W`],
-  };
+  // Combineer vandaag + morgen op gedeelde tijdas
+  const uren = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0') + ':00');
+  const vandaagMap = Object.fromEntries((zon.grafiekData || []).filter(d => d.dag === 'vandaag').map(d => [d.tijd, d.watt]));
+  const morgenMap  = Object.fromEntries((zon.grafiekData || []).filter(d => d.dag === 'morgen').map(d => [d.tijd, d.watt]));
+  const gecombineerd = uren.map(tijd => ({ tijd, vandaag: vandaagMap[tijd] ?? 0, morgen: morgenMap[tijd] ?? 0 }));
 
   return (
     <div className="border-t border-gray-700 pt-4 space-y-3">
@@ -467,42 +456,27 @@ function ZonPrognose({ zon }) {
       <div className="flex flex-wrap justify-between items-baseline gap-2">
         <p className="text-sm font-semibold text-gray-200">☀️ Zonneprognose</p>
         <div className="flex flex-wrap gap-4 text-sm">
-          <span className="text-gray-500">Vandaag totaal&nbsp;<span className="text-amber-400 font-semibold">{zon.vandaagKwh} kWh</span></span>
+          <span className="flex items-center gap-1 text-gray-500"><span className="inline-block w-3 h-3 rounded-sm bg-amber-400" />Vandaag&nbsp;<span className="text-amber-400 font-semibold">{zon.vandaagKwh} kWh</span></span>
           <span className="text-gray-500">Gemeten&nbsp;<span className="text-green-400 font-semibold">{zon.vandaagGemeten != null ? `${zon.vandaagGemeten} kWh` : '—'}</span></span>
-          <span className="text-gray-500">Morgen&nbsp;<span className="text-orange-400 font-semibold">{zon.morgenKwh} kWh</span></span>
+          <span className="flex items-center gap-1 text-gray-500"><span className="inline-block w-3 h-3 rounded-sm bg-orange-400" />Morgen&nbsp;<span className="text-orange-400 font-semibold">{zon.morgenKwh} kWh</span></span>
         </div>
       </div>
 
-      {/* Twee aparte grafieken naast elkaar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Vandaag */}
-        <div className="bg-gray-750 rounded-lg p-2 border border-gray-700">
-          <p className="text-xs text-amber-400 font-medium mb-1 px-1">Vandaag</p>
-          <ResponsiveContainer width="100%" height={130}>
-            <BarChart data={vandaagData} {...chartProps}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis dataKey="tijd" {...axisProps.xAxis} />
-              <YAxis {...axisProps.yAxis} />
-              <Tooltip {...tooltipStyle} />
-              <Bar dataKey="watt" fill="#F59E0B" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Morgen */}
-        <div className="bg-gray-750 rounded-lg p-2 border border-gray-700">
-          <p className="text-xs text-orange-400 font-medium mb-1 px-1">Morgen</p>
-          <ResponsiveContainer width="100%" height={130}>
-            <BarChart data={morgenData} {...chartProps}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis dataKey="tijd" {...axisProps.xAxis} />
-              <YAxis {...axisProps.yAxis} />
-              <Tooltip {...tooltipStyle} />
-              <Bar dataKey="watt" fill="#FB923C" radius={[3, 3, 0, 0]} isAnimationActive={false} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      {/* Gecombineerde grafiek op gedeelde Y-as */}
+      <ResponsiveContainer width="100%" height={150}>
+        <BarChart data={gecombineerd} barCategoryGap="20%" barGap={2} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+          <XAxis dataKey="tijd" tick={{ fontSize: 9, fill: '#6B7280' }} interval={3} />
+          <YAxis tick={{ fontSize: 9, fill: '#6B7280' }} tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(1)}k` : v} width={28} />
+          <Tooltip
+            contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px', fontSize: 11 }}
+            labelStyle={{ color: '#9CA3AF' }}
+            formatter={(v, name) => [v >= 1000 ? `${(v/1000).toFixed(2)} kW` : `${v} W`, name === 'vandaag' ? 'Vandaag' : 'Morgen']}
+          />
+          <Bar dataKey="vandaag" fill="#F59E0B" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+          <Bar dataKey="morgen"  fill="#FB923C" radius={[2, 2, 0, 0]} isAnimationActive={false} />
+        </BarChart>
+      </ResponsiveContainer>
 
       <p className="text-xs text-gray-600">📍 Harkstede · 18 × 370Wp · Zuid 0° · 35° helling · Solcast</p>
     </div>
