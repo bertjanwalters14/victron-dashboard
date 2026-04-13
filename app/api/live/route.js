@@ -63,7 +63,11 @@ export async function GET(request) {
     const GbKwh    = totaalKwh('Gb');
     const BgKwh    = totaalKwh('Bg');
     const BcKwh    = totaalKwh('Bc');
-    const accuKosten = (GbKwh + BgKwh + BcKwh) * 0.01;
+    const PgKwh    = totaalKwh('Pg');
+    const PcKwh    = totaalKwh('Pc');
+    const PbKwh    = totaalKwh('Pb');
+    const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.01;
+    const zonKwhVandaag = +(PgKwh + PcKwh + PbKwh).toFixed(2);
 
     const winst = winstBg + winstBc - kostenGb - accuKosten;
 
@@ -71,6 +75,7 @@ export async function GET(request) {
       success: true,
       datum:   datumStr,
       winst:   winst.toFixed(2),
+      zonKwhVandaag,
       winstBg:     winstBg.toFixed(2),
       winstBc:     winstBc.toFixed(2),
       winstPc:     winstPc.toFixed(2),

@@ -620,22 +620,28 @@ export async function GET(request) {
       VALUES (${nu.toISOString()}, ${consumerPrijs}, ${beslissing})
     `;
 
-    // 5b. Daadwerkelijk gemeten zonne-energie vandaag (uit onze eigen DB)
+    // 5b. Daadwerkelijk gemeten zonne-energie vandaag (VRM kWh stats)
     let solarVandaagGemeten = null;
     try {
-      const solarRows = await sql`
-        SELECT ROUND(
-          SUM(solar_w * EXTRACT(EPOCH FROM (
-            LEAD(tijdstip) OVER (ORDER BY tijdstip) - tijdstip
-          )) / 3600000.0)::numeric
-        , 2) AS kwh
-        FROM onbalans_log
-        WHERE bron = 'nodered'
-          AND solar_w IS NOT NULL
-          AND tijdstip >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam'
-      `;
-      solarVandaagGemeten = solarRows[0]?.kwh != null ? parseFloat(solarRows[0].kwh) : null;
-    } catch { /* negeer als query faalt */ }
+      const isDST   = nu.getTimezoneOffset() < new Date(nu.getFullYear(), 0, 1).getTimezoneOffset();
+      const offset  = isDST ? 2 : 1;
+      const dagStart = new Date(nu);
+      dagStart.setUTCHours(dagStart.getUTCHours() - ((dagStart.getUTCHours() + offset) % 24 + 24) % 24);
+      dagStart.setUTCMinutes(0, 0, 0);
+      const vrmStart = Math.floor(new Date(nu.toISOString().split('T')[0] + `T00:00:00+0${offset}:00`).getTime() / 1000);
+      const vrmEnd   = Math.floor(nu.getTime() / 1000);
+      const vrmRes   = await fetch(
+        `https://vrmapi.victronenergy.com/v2/installations/${process.env.VICTRON_SITE_ID}/stats?type=kwh&interval=hours&start=${vrmStart}&end=${vrmEnd}`,
+        { headers: { 'x-authorization': `Token ${process.env.VICTRON_API_TOKEN}` } }
+      );
+      if (vrmRes.ok) {
+        const vrmData = await vrmRes.json();
+        const rec = vrmData?.records || {};
+        const kwh = v => (rec[v] || []).reduce((s, [, k]) => s + k, 0);
+        const totaal = kwh('Pg') + kwh('Pc') + kwh('Pb');
+        if (totaal > 0) solarVandaagGemeten = +totaal.toFixed(2);
+      }
+    } catch { /* negeer als VRM niet beschikbaar */ }
 
     // 6. Alle prijzen van vandaag voor grafiek — incl. zone per uur
     // Bouw een snelle lookup: tijdlabel → verwacht zonnewatt (voor zon-override markering)
