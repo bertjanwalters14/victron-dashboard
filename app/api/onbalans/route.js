@@ -202,6 +202,7 @@ async function haalZonnePrognose(nu, sql) {
       vandaagKwh:          +vandaagTotaalKwh.toFixed(2),
       morgenKwh:           +morgenKwh.toFixed(2),
       vandaagResterendKwh: +vandaagResterendKwh.toFixed(2),
+      vandaagGemeten:      vandaagGeproduceerdKwh > 0 ? +vandaagGeproduceerdKwh.toFixed(2) : null,
       grafiekData,
     };
 
@@ -704,7 +705,7 @@ export async function GET(request) {
       zonPrognose: zonPrognose ? {
         vandaagKwh:          +zonPrognose.vandaagKwh.toFixed(2),
         morgenKwh:           +zonPrognose.morgenKwh.toFixed(2),
-        vandaagGemeten:      solarVandaagGemeten,
+        vandaagGemeten:      solarVandaagGemeten ?? zonPrognose.vandaagGemeten ?? null,
         grafiekData:          zonPrognose.grafiekData,
       } : null,
     });
