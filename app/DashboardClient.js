@@ -101,7 +101,7 @@ export default function DashboardClient({ data }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis dataKey="datum" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={d => String(d).slice(5)} />
                   <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} />
-                  <Tooltip formatter={v => [`€${v.toFixed(2)}`, 'Winst']} contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }} labelStyle={{ color: '#9CA3AF' }} />
+                  <Tooltip formatter={v => [`€${v.toFixed(2)}`, 'Winst']} labelFormatter={d => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }} labelStyle={{ color: '#9CA3AF' }} />
                   <Line type="monotone" dataKey="cumulatief" stroke="#10B981" dot={false} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
