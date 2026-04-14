@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, ReferenceArea, ComposedChart, Area } from 'recharts';
 
 const BATTERIJ_KOSTEN   = 11252;
-const INSTALLATIE_DATUM = new Date('2026-04-03');
+const INSTALLATIE_DATUM = new Date('2026-04-04');
 const MAAND_NAMEN       = ["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"];
 
 const INFO = {
@@ -34,7 +34,7 @@ export default function DashboardClient({ data }) {
         <div className="flex justify-between items-start mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
-            <p className="text-gray-400 mt-1">Installatie: 3 april 2026 · Investering: €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')} <span className="text-green-600 text-xs">(incl. BTW teruggave)</span></p>
+            <p className="text-gray-400 mt-1">Installatie: 4 april 2026 · Investering: €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')} <span className="text-green-600 text-xs">(incl. BTW teruggave)</span></p>
           </div>
           <RefreshButton />
         </div>
