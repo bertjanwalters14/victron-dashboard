@@ -605,79 +605,85 @@ function SeizoenProjectie({ maandActueel = {} }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // Verrijk projectiemaanden met actuele 2026-data
   const heeftActueel = Object.keys(maandActueel).length > 0;
   const merged = (data?.maanden || []).map(m => ({
     ...m,
     actueel: maandActueel[m.maand] ?? null,
   }));
 
+  const totaalKosten   = merged.reduce((s, m) => s + (m.energiekosten || 0), 0);
+  const totaalBespaard = data?.jaarTotaal ?? 0;
+
+  const tooltipContent = ({ active, payload }) => {
+    if (!active || !payload?.length) return null;
+    const m = payload[0]?.payload;
+    const netto = (m.energiekosten || 0) - (m.proj || 0);
+    return (
+      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 220 }}>
+        <p style={{ fontWeight: 700, marginBottom: 6, fontSize: 13 }}>{m.maand}</p>
+        <p style={{ color: '#9CA3AF' }}>Energiekosten 2025: <strong style={{ color: '#D1D5DB' }}>€{m.energiekosten?.toFixed(0)}</strong></p>
+        <p style={{ color: '#34D399' }}>Besparing simulatie: <strong>€{m.proj?.toFixed(0) ?? '—'}</strong></p>
+        {m.actueel != null && (
+          <p style={{ color: '#22D3EE' }}>Werkelijk 2026: <strong>€{m.actueel?.toFixed(0)}</strong></p>
+        )}
+        <p style={{ color: netto < 0 ? '#34D399' : '#9CA3AF', marginTop: 6, borderTop: '1px solid #374151', paddingTop: 5 }}>
+          Netto kosten na batterij: <strong>{netto < 0 ? `+€${Math.abs(netto).toFixed(0)} inkomsten` : `€${netto.toFixed(0)}`}</strong>
+        </p>
+        <p style={{ color: '#6B7280', marginTop: 4 }}>
+          Gem. prijs: €{m.avgPrijs}/kWh · {m.importKwh} kWh import · {m.exportKwh} kWh export
+        </p>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
-      <div className="flex justify-between items-baseline flex-wrap gap-2 mb-3">
+
+      {/* Header */}
+      <div className="flex justify-between items-start flex-wrap gap-3 mb-4">
         <div>
           <h2 className="font-semibold text-gray-200">📅 Seizoensprojectie 2025 vs. 2026</h2>
-          <p className="text-gray-500 text-xs mt-0.5">
-            Wat zou de batterij hebben verdiend als die er in 2025 al had gestaan?
-          </p>
+          <p className="text-gray-500 text-xs mt-0.5">Energiekosten · batterijbesparing simulatie · werkelijk 2026</p>
         </div>
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-gray-400">
-            <span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>
-            Simulatie 2025
+        {data && (
+          <div className="flex gap-4 text-right flex-wrap">
+            <div>
+              <p className="text-xs text-gray-500">Energiekosten 2025</p>
+              <p className="text-lg font-bold text-gray-300">€{totaalKosten.toFixed(0)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Besparing simulatie</p>
+              <p className="text-lg font-bold text-emerald-400">€{totaalBespaard.toFixed(0)}</p>
+            </div>
           </div>
-          {heeftActueel && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-400">
-              <span className="inline-block w-3 h-3 rounded-sm bg-cyan-400"/>
-              Werkelijk 2026
-            </div>
-          )}
-          {data && (
-            <div className="text-right">
-              <p className="text-xs text-gray-500">Geschat jaartotaal</p>
-              <p className="text-xl font-bold text-emerald-400">€{data.jaarTotaal?.toFixed(0)}</p>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {loading && <p className="text-gray-500 text-sm py-4">Prijzen ophalen &amp; simuleren… (kan ~10 s duren)</p>}
+      {/* Legenda */}
+      <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-400">
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-gray-500"/>Energiekosten 2025</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>Besparing simulatie</span>
+        {heeftActueel && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-cyan-400"/>Werkelijk 2026</span>}
+      </div>
+
+      {loading && <p className="text-gray-500 text-sm py-6 text-center">Prijzen ophalen &amp; simuleren… (kan ~10 s duren)</p>}
       {fout    && <p className="text-red-400  text-sm py-4">{fout}</p>}
 
       {data && (
         <>
-          <ResponsiveContainer width="100%" height={210}>
-            <BarChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="20%" barGap={2}>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="18%" barGap={2}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
               <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} width={42} />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload?.length) return null;
-                  const m = payload[0]?.payload;
-                  return (
-                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB' }}>
-                      <p style={{ fontWeight: 700, marginBottom: 6 }}>{label}</p>
-                      <p style={{ color: '#34D399' }}>Simulatie 2025: <strong>€{m.proj?.toFixed(2) ?? '—'}</strong></p>
-                      {m.actueel != null && (
-                        <p style={{ color: '#22D3EE' }}>Werkelijk 2026: <strong>€{m.actueel?.toFixed(2)}</strong></p>
-                      )}
-                      <p style={{ color: '#6B7280', marginTop: 6, borderTop: '1px solid #374151', paddingTop: 5 }}>
-                        Export 2025: {m.exportKwh} kWh · Import: {m.importKwh} kWh
-                      </p>
-                      <p style={{ color: '#6B7280' }}>
-                        Gem. prijs: €{m.avgPrijs}/kWh · p25 €{m.p25} · p75 €{m.p75}
-                      </p>
-                    </div>
-                  );
-                }}
-              />
-              <Bar dataKey="proj"    name="Simulatie 2025" radius={[3,3,0,0]} fill="#10B981" isAnimationActive={false} />
-              <Bar dataKey="actueel" name="Werkelijk 2026"  radius={[3,3,0,0]} fill="#22D3EE" isAnimationActive={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} width={46} />
+              <Tooltip content={tooltipContent} />
+              <Bar dataKey="energiekosten" name="Energiekosten"     radius={[3,3,0,0]} fill="#4B5563" isAnimationActive={false} />
+              <Bar dataKey="proj"          name="Besparing sim."    radius={[3,3,0,0]} fill="#10B981" isAnimationActive={false} />
+              <Bar dataKey="actueel"       name="Werkelijk 2026"    radius={[3,3,0,0]} fill="#22D3EE" isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
           <p className="text-xs text-gray-600 mt-2">
-            P1 meetdata 2025 · EPEX spotprijzen week 2 per maand · 32 kWh Pylontech
+            P1 meetdata 2025 · volledige maandprijzen EPEX · 32 kWh Pylontech
             {data.vanCache ? ' · 📦 uit cache' : ' · 🔄 vers berekend'}
           </p>
         </>

@@ -122,8 +122,8 @@ export async function GET(request) {
     const { neon } = await import('@neondatabase/serverless');
     const sql = neon(process.env.DATABASE_URL);
 
-    // Cache: 7 dagen — sleutel _v4 (volledige maand + warmtepomp model)
-    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v4'`.catch(() => []);
+    // Cache: 7 dagen — sleutel _v5 (energiekosten toegevoegd)
+    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v5'`.catch(() => []);
     if (cache[0]) {
       const oud = (Date.now() - new Date(cache[0].bijgewerkt)) / 3600000;
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
@@ -140,16 +140,19 @@ export async function GET(request) {
       const prijzen = maandPrijzen[key];
       if (!prijzen) return { maand: MAANDEN_NL[maandNr], proj: null };
       const proj = simuleerMaand(maandNr, p1.exp, p1.imp, prijzen);
+      // Energiekosten zonder batterij: wat je die maand aan stroom zou betalen
+      const energiekosten = +(p1.imp * prijzen.avg_consumer).toFixed(2);
       return {
-        maand:     MAANDEN_NL[maandNr],
+        maand:        MAANDEN_NL[maandNr],
         proj,
-        exportKwh: +p1.exp.toFixed(0),
-        importKwh: +p1.imp.toFixed(0),
-        avgPrijs:  +prijzen.avg_consumer.toFixed(3),
-        spread:    +prijzen.spread_consumer.toFixed(3),
-        p25:       +prijzen.p25_consumer.toFixed(3),
-        p75:       +prijzen.p75_consumer.toFixed(3),
-        p25spot:   +prijzen.p25_spot.toFixed(3),
+        energiekosten,
+        exportKwh:    +p1.exp.toFixed(0),
+        importKwh:    +p1.imp.toFixed(0),
+        avgPrijs:     +prijzen.avg_consumer.toFixed(3),
+        spread:       +prijzen.spread_consumer.toFixed(3),
+        p25:          +prijzen.p25_consumer.toFixed(3),
+        p75:          +prijzen.p75_consumer.toFixed(3),
+        p25spot:      +prijzen.p25_spot.toFixed(3),
       };
     });
 
@@ -161,6 +164,9 @@ export async function GET(request) {
       VALUES ('projectie_cache_v4', ${JSON.stringify(resultaat)}, NOW())
       ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
     `.catch(() => {});
+
+    // Verwijder oude cache-versies (opruimen)
+    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4')`.catch(() => {});
 
     return Response.json({ success: true, ...resultaat });
 
