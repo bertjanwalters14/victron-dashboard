@@ -695,7 +695,7 @@ function cumulatief(data) {
 function maandActueel(data) {
   const result = {};
   for (const d of data) {
-    const key = MAANDEN_NL[new Date(d.datum).getMonth()];
+    const key = MAAND_NAMEN[new Date(d.datum).getMonth()];
     result[key] = (result[key] || 0) + parseFloat(d.winst_euro || 0);
   }
   // Rond af op 2 decimalen
