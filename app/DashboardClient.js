@@ -664,7 +664,7 @@ function SeizoenProjectie() {
                         <p style={{ color: '#9CA3AF', marginTop: 6 }}>↑ Teruggeleverd: {m.exportKwh} kWh</p>
                         <p style={{ color: '#9CA3AF' }}>↓ Van net: {m.importKwh} kWh</p>
                         <p style={{ color: '#6B7280', marginTop: 4 }}>
-                          p25 €{m.p25} · p75 €{m.p75} · spread €{m.spread}
+                          spot p25 €{m.p25spot} · cons p75 €{m.p75} · spread €{m.spread}
                         </p>
                       </div>
                     );

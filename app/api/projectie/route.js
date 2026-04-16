@@ -24,49 +24,80 @@ function anwbPrijs(spot) {
   return (spot + 0.03 + 0.13) * 1.21;
 }
 
-// Haal een week EPEX-prijzen op voor een gegeven datum (1e van de maand 2025)
+// Haal een week EPEX-prijzen op voor week 2 van de gegeven maand (2025)
+// Retourneert zowel spot- als consumentenprijzen per percentiel.
 async function haalMaandPrijzen(maandStr) {
-  const van  = `${maandStr}-08T00:00:00.000Z`;
-  const tot  = `${maandStr}-14T23:59:59.000Z`;
-  const res  = await fetch(
+  const van = `${maandStr}-08T00:00:00.000Z`;
+  const tot = `${maandStr}-14T23:59:59.000Z`;
+  const res = await fetch(
     `https://api.energyzero.nl/v1/energyprices?fromDate=${van}&tillDate=${tot}&interval=4&usageType=1&inclBtw=false`
   );
   if (!res.ok) return null;
   const json = await res.json();
-  const prijzen = (json?.Prices || []).map(p => anwbPrijs(parseFloat(p.price)));
-  if (!prijzen.length) return null;
-  const gesorteerd = [...prijzen].sort((a, b) => a - b);
-  const p25 = gesorteerd[Math.floor(gesorteerd.length * 0.25)];
-  const p75 = gesorteerd[Math.floor(gesorteerd.length * 0.75)];
-  const avg = prijzen.reduce((s, v) => s + v, 0) / prijzen.length;
-  return { p25, p75, avg, spread: p75 - p25 };
+
+  const spots = (json?.Prices || []).map(p => parseFloat(p.price));
+  if (!spots.length) return null;
+
+  const consumers   = spots.map(anwbPrijs);
+  const sortedSpots = [...spots].sort((a, b) => a - b);
+  const sortedCons  = [...consumers].sort((a, b) => a - b);
+
+  const idx25 = Math.floor(spots.length * 0.25);
+  const idx75 = Math.floor(spots.length * 0.75);
+
+  const avg_consumer = consumers.reduce((s, v) => s + v, 0) / consumers.length;
+
+  return {
+    p25_spot:        sortedSpots[idx25],
+    p75_spot:        sortedSpots[idx75],
+    p25_consumer:    sortedCons[idx25],
+    p75_consumer:    sortedCons[idx75],
+    avg_consumer,
+    spread_consumer: sortedCons[idx75] - sortedCons[idx25],
+  };
 }
 
-// Simuleer wat de batterij had verdiend in een maand
-// op basis van P1 export/import en maandprijzen
+// Simuleer de maandelijkse batterijwinst.
+//
+// Kern van de berekening:
+//   Zonder batterij: zonneoverschot gaat naar net tegen SPOT-prijs (laag, p25_spot)
+//                    import uit net kost volle consumentenprijs (hoog, avg_consumer)
+//   Met batterij:    overschot opslaan → zelf gebruiken → bespaart avg_consumer per kWh
+//                    opportunity cost = p25_spot (wat je anders had gekregen door te exporteren)
+//   Winst/kWh ≈ avg_consumer − p25_spot  (minus 10% efficiency verlies)
+//
 function simuleerMaand(maandNr, exportKwh, importKwh, prijzen) {
   const dagen = DAGEN[maandNr];
-  const { p25, p75 } = prijzen;
+  const { p25_spot, p75_consumer, avg_consumer } = prijzen;
 
-  // 1. Zonsurplus opslaan en op piekmoment verkopen/gebruiken
-  //    Batterij kan max ~24 kWh/dag van zon opslaan (32 kWh cap, 80% nuttig)
-  const maxZonPerDag   = 24;
-  const zonCaptured    = Math.min(exportKwh, dagen * maxZonPerDag);
-  // Zonder batterij: verkocht op zontijdprijs (≈ p25)
-  // Met batterij: verkocht op piekmomenten (≈ p75), 90% rendement
-  const zonWinst       = zonCaptured * (p75 * 0.9 - p25);
+  // 32 kWh Pylontech, 80% bruikbaar → max 25.6 kWh/dag opslagcapaciteit
+  const maxOpslaan = 25.6 * dagen;
 
-  // 2. Net arbitrage: laden op p25, ontladen op p75
-  //    Ruimte over na zonneladen, max 16 kWh/dag van net
-  const ruimteNaZon    = Math.max(0, dagen * 24 - zonCaptured);
-  const gridArb        = Math.min(ruimteNaZon, dagen * 16, importKwh * 0.35);
-  const gridWinst      = gridArb * (p75 * 0.9 - p25);
+  // ── 1. Zonne-zelfconsumptie ──────────────────────────────────────────────
+  // Sla zoveel van het exportoverschot op als de batterij toelaat.
+  // Gebruik dat later om import te vermijden.
+  const zonOpgeslagen = Math.min(exportKwh, maxOpslaan);
+  // 90% rondreis-rendement; nooit meer zelf verbruiken dan we importeerden
+  const zelfGebruikt  = Math.min(zonOpgeslagen * 0.9, importKwh);
+  // Besparing: vermeden import (avg_consumer) minus gemiste exportopbrengst (p25_spot)
+  const zonWinst      = zelfGebruikt * avg_consumer
+                      - (zelfGebruikt / 0.9) * p25_spot;
 
-  // 3. Accukosten: €0,01/kWh per laad- én ontlaadbeurt
-  const totaalKwh      = zonCaptured + gridArb;
-  const accuKosten     = totaalKwh * 0.01 * 2;
+  // ── 2. Net-arbitrage ─────────────────────────────────────────────────────
+  // Laad van net bij goedkope uren (p25_consumer), ontlaad bij dure uren (p75_consumer).
+  // Alleen als de spread het rendement dekt.
+  const arbSpread   = p75_consumer * 0.9 - avg_consumer;
+  const ruimteNaZon = Math.max(0, maxOpslaan - zonOpgeslagen);
+  const arbKwh      = arbSpread > 0.01
+    ? Math.min(ruimteNaZon * 0.25, importKwh * 0.20)
+    : 0;
+  const arbWinst    = arbKwh * arbSpread;
 
-  return +(zonWinst + gridWinst - accuKosten).toFixed(2);
+  // ── 3. Accukosten (€0,01/kWh per laad- én ontlaadbeurt) ─────────────────
+  const totaalCycled = zelfGebruikt / 0.9 + arbKwh;
+  const accuKosten   = totaalCycled * 0.01 * 2;
+
+  return +(zonWinst + arbWinst - accuKosten).toFixed(2);
 }
 
 export async function GET(request) {
@@ -79,8 +110,8 @@ export async function GET(request) {
     const { neon } = await import('@neondatabase/serverless');
     const sql = neon(process.env.DATABASE_URL);
 
-    // Cache: 7 dagen geldig (prijzen van 2025 veranderen niet meer)
-    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache'`.catch(() => []);
+    // Cache: 7 dagen geldig — sleutel _v2 om na formule-update opnieuw te berekenen
+    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v2'`.catch(() => []);
     if (cache[0]) {
       const oud = (Date.now() - new Date(cache[0].bijgewerkt)) / 3600000;
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
@@ -89,14 +120,14 @@ export async function GET(request) {
     // Haal EPEX maandprijzen op voor 2025 (week 2 van elke maand)
     const maandPrijzen = {};
     for (let m = 1; m <= 12; m++) {
-      const key = `2025-${String(m).padStart(2,'0')}`;
+      const key = `2025-${String(m).padStart(2, '0')}`;
       maandPrijzen[key] = await haalMaandPrijzen(key);
-      await new Promise(r => setTimeout(r, 200)); // rustig aan
+      await new Promise(r => setTimeout(r, 200));
     }
 
     // Simuleer per maand
     const maanden = Object.entries(P1_2025).map(([key, p1]) => {
-      const maandNr = parseInt(key.slice(5,7)) - 1;
+      const maandNr = parseInt(key.slice(5, 7)) - 1;
       const prijzen = maandPrijzen[key];
       if (!prijzen) return { maand: MAANDEN_NL[maandNr], proj: null };
       const proj = simuleerMaand(maandNr, p1.exp, p1.imp, prijzen);
@@ -105,9 +136,10 @@ export async function GET(request) {
         proj,
         exportKwh: +p1.exp.toFixed(0),
         importKwh: +p1.imp.toFixed(0),
-        spread:    +prijzen.spread.toFixed(3),
-        p25:       +prijzen.p25.toFixed(3),
-        p75:       +prijzen.p75.toFixed(3),
+        spread:    +prijzen.spread_consumer.toFixed(3),
+        p25:       +prijzen.p25_consumer.toFixed(3),
+        p75:       +prijzen.p75_consumer.toFixed(3),
+        p25spot:   +prijzen.p25_spot.toFixed(3),
       };
     });
 
@@ -116,7 +148,7 @@ export async function GET(request) {
     const resultaat = { maanden, jaarTotaal };
     await sql`
       INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
-      VALUES ('projectie_cache', ${JSON.stringify(resultaat)}, NOW())
+      VALUES ('projectie_cache_v2', ${JSON.stringify(resultaat)}, NOW())
       ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
     `.catch(() => {});
 
