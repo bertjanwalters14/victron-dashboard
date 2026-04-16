@@ -1,4 +1,5 @@
-export const dynamic = 'force-dynamic';
+export const dynamic    = 'force-dynamic';
+export const maxDuration = 30; // Vercel Pro/hobby: verhoog naar 30s als beschikbaar
 
 // P1 maanddata 2025 — cumulatieve dagstanden omgezet naar maandtotalen
 // Import = van net gekocht (kWh), Export = teruggeleverd aan net (kWh)
@@ -117,13 +118,10 @@ export async function GET(request) {
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
     }
 
-    // Haal EPEX maandprijzen op voor 2025 (week 2 van elke maand)
-    const maandPrijzen = {};
-    for (let m = 1; m <= 12; m++) {
-      const key = `2025-${String(m).padStart(2, '0')}`;
-      maandPrijzen[key] = await haalMaandPrijzen(key);
-      await new Promise(r => setTimeout(r, 200));
-    }
+    // Haal EPEX maandprijzen op voor 2025 — parallel (max ~2s i.p.v. ~12s sequentieel)
+    const maandKeys = Array.from({ length: 12 }, (_, i) => `2025-${String(i + 1).padStart(2, '0')}`);
+    const prijsResultaten = await Promise.all(maandKeys.map(k => haalMaandPrijzen(k)));
+    const maandPrijzen = Object.fromEntries(maandKeys.map((k, i) => [k, prijsResultaten[i]]));
 
     // Simuleer per maand
     const maanden = Object.entries(P1_2025).map(([key, p1]) => {
