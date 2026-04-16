@@ -141,6 +141,7 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
+        <SeizoenProjectie />
         <OnbalansTegel />
         {/* <TennetOnbalans /> */}
         {/* <EssSetpuntControle /> */}
@@ -603,6 +604,89 @@ function RefreshButton() {
       </svg>
       {status === 'idle' && 'Ververs'}{status === 'loading' && 'Bezig...'}{status === 'done' && '✓ Klaar!'}{status === 'error' && '✕ Fout'}
     </button>
+  );
+}
+
+function SeizoenProjectie() {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fout,    setFout]    = useState(null);
+
+  useEffect(() => {
+    fetch('/api/projectie?secret=Nummer14!')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success) setData(json);
+        else setFout(json.error || 'Geen data');
+      })
+      .catch(e => setFout(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <div className="flex justify-between items-baseline flex-wrap gap-2 mb-1">
+        <div>
+          <h2 className="font-semibold text-gray-200">📅 Seizoensprojectie 2025</h2>
+          <p className="text-gray-500 text-xs mt-0.5">
+            Wat zou de batterij hebben verdiend als die er in 2025 al had gestaan?
+          </p>
+        </div>
+        {data && (
+          <div className="text-right">
+            <p className="text-xs text-gray-500">Geschat jaartotaal</p>
+            <p className="text-2xl font-bold text-emerald-400">€{data.jaarTotaal?.toFixed(0)}</p>
+          </div>
+        )}
+      </div>
+
+      {loading && <p className="text-gray-500 text-sm mt-4">Prijzen ophalen &amp; simuleren… (kan ~10 s duren)</p>}
+      {fout    && <p className="text-red-400  text-sm mt-4">{fout}</p>}
+
+      {data && (() => {
+        const maanden = data.maanden || [];
+        const maxProj = Math.max(...maanden.map(m => m.proj || 0));
+        return (
+          <>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={maanden} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} width={42} />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const m = payload[0]?.payload;
+                    return (
+                      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB' }}>
+                        <p style={{ fontWeight: 700, marginBottom: 4 }}>{m.maand}</p>
+                        <p style={{ color: '#34D399', fontWeight: 700, fontSize: 16 }}>€{m.proj?.toFixed(2)}</p>
+                        <p style={{ color: '#9CA3AF', marginTop: 6 }}>↑ Teruggeleverd: {m.exportKwh} kWh</p>
+                        <p style={{ color: '#9CA3AF' }}>↓ Van net: {m.importKwh} kWh</p>
+                        <p style={{ color: '#6B7280', marginTop: 4 }}>
+                          p25 €{m.p25} · p75 €{m.p75} · spread €{m.spread}
+                        </p>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="proj" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                  {maanden.map((m, i) => {
+                    const ratio = maxProj > 0 ? (m.proj || 0) / maxProj : 0;
+                    const fill  = ratio >= 0.75 ? '#10B981' : ratio >= 0.4 ? '#34D399' : '#6EE7B7';
+                    return <Cell key={i} fill={fill} />;
+                  })}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-gray-600 mt-2">
+              P1 meetdata 2025 · EPEX spotprijzen week 2 per maand · 32 kWh Pylontech
+              {data.vanCache ? ' · 📦 uit cache' : ' · 🔄 vers berekend'}
+            </p>
+          </>
+        );
+      })()}
+    </div>
   );
 }
 
