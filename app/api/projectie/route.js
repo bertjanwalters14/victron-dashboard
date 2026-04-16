@@ -78,9 +78,11 @@ async function haalGemiddeldeMaandPrijzen(maandNr) {
 // Simuleer maandelijkse batterijwinst — dagmodel.
 //
 // Component A — zonne-arbitrage:
-//   Overdag laadt batterij van panelen (gemiste export = p25_spot).
+//   Overdag laadt batterij van panelen; gelegenheidskosten = feedInTarief.
+//   Met saldering: feedInTarief = p25_spot (export levert al redelijke creditering).
+//   Zonder saldering: feedInTarief = avg_spot (~€0,08/kWh) — zon is goedkoper op te slaan.
 //   Ontladen waardeer je tegen p75_consumer: DESS kiest bewust de piekuren.
-//   Winst/dag = zonUit × p75_consumer − zonIn × p25_spot
+//   Winst/dag = zonUit × p75_consumer − zonIn × feedInTarief
 //
 // Component B — grid time-shifting (warmtepomp model):
 //   Laad 's nachts van net op goedkoopste uren (p25_consumer).
@@ -93,7 +95,10 @@ async function haalGemiddeldeMaandPrijzen(maandNr) {
 //   Waarde: je ontvangt |negConsumerPrijs| voor laden + bespaart avg_consumer bij ontladen.
 //
 // Accukosten: €0,01/kWh laden + €0,01/kWh ontladen
-function simuleerMaand(maandNr, exportKwh, importKwh, prijzen) {
+//
+// feedInTarief = null → gebruik p25_spot (standaard, met saldering)
+//              = avg_spot → zonder saldering scenario
+function simuleerMaand(maandNr, exportKwh, importKwh, prijzen, feedInTarief = null) {
   const dagen = DAGEN[maandNr];
   const {
     p25_spot, p25_consumer, p75_consumer, avg_consumer,
@@ -102,11 +107,14 @@ function simuleerMaand(maandNr, exportKwh, importKwh, prijzen) {
   const EFF        = 0.9;
   const CAPACITEIT = 25.6;  // kWh/dag (32 kWh × 80%)
 
+  // feedInTarief: wat je kWh opbrengt als je exporteert i.p.v. opslaat
+  const feedIn = feedInTarief ?? p25_spot;
+
   // ── Component A: zonne-arbitrage ─────────────────────────────────────────
   const zonPerDag      = exportKwh / dagen;
   const zonInPerDag    = Math.min(zonPerDag, CAPACITEIT);
   const zonUitPerDag   = zonInPerDag * EFF;
-  const zonWinstPerDag = zonUitPerDag * p75_consumer - zonInPerDag * p25_spot;
+  const zonWinstPerDag = zonUitPerDag * p75_consumer - zonInPerDag * feedIn;
 
   // ── Component B: goedkoop inkopen voor warmtepomp ────────────────────────
   const gridSpread     = p75_consumer * EFF - p25_consumer;
@@ -163,7 +171,7 @@ export async function GET(request) {
     const { neon } = await import('@neondatabase/serverless');
     const sql = neon(process.env.DATABASE_URL);
 
-    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v10'`.catch(() => []);
+    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v11'`.catch(() => []);
     if (cache[0]) {
       const oud = (Date.now() - new Date(cache[0].bijgewerkt)) / 3600000;
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
@@ -181,41 +189,65 @@ export async function GET(request) {
       const maandNr = parseInt(key.slice(5, 7)) - 1;
       const prijzen = maandPrijzen[key];
       if (!prijzen) return { maand: MAANDEN_NL[maandNr], proj: null };
+      // Simulatie MET saldering (standaard)
       const sim = simuleerMaand(maandNr, p1.exp, p1.imp, prijzen);
+      // Simulatie ZONDER saldering: exporteer zon aan spotprijs i.p.v. consumentenprijs
+      const simZS = simuleerMaand(maandNr, p1.exp, p1.imp, prijzen, prijzen.avg_spot);
+
+      // Energiekosten zonder batterij, MET saldering:
+      //   Je betaalt voor import; export wordt gecrediteerd tegen consumentenprijs (netto saldering).
       const energiekosten = +(p1.imp * prijzen.avg_consumer).toFixed(2);
+
+      // Energiekosten zonder batterij, ZONDER saldering:
+      //   Je betaalt voor import; export levert alleen spotprijs op (~€0,08/kWh).
+      //   Verschil toont het "salderingsvoordeel" dat je nu nog hebt.
+      const energiekostenZS = +(p1.imp * prijzen.avg_consumer - p1.exp * prijzen.avg_spot).toFixed(2);
+
       return {
-        maand:        MAANDEN_NL[maandNr],
-        proj:         sim.proj,
-        projZon:      sim.projZon,
-        projGrid:     sim.projGrid,
-        projNeg:      sim.projNeg,
+        maand:           MAANDEN_NL[maandNr],
+        proj:            sim.proj,
+        projZon:         sim.projZon,
+        projGrid:        sim.projGrid,
+        projNeg:         sim.projNeg,
+        projZS:          simZS.proj,      // batterijwinst zonder saldering (hogere zon-waarde)
         energiekosten,
-        exportKwh:    +p1.exp.toFixed(0),
-        importKwh:    +p1.imp.toFixed(0),
-        avgPrijs:     +prijzen.avg_consumer.toFixed(3),
-        spread:       +prijzen.spread_consumer.toFixed(3),
-        p25:          +prijzen.p25_consumer.toFixed(3),
-        p75:          +prijzen.p75_consumer.toFixed(3),
-        p25spot:      +prijzen.p25_spot.toFixed(3),
-        negUren:      +prijzen.negatieveUrenPerMaand.toFixed(1),
-        negSpot:      +prijzen.gemNegatieveSpot.toFixed(3),
+        energiekostenZS,                  // hogere energiekosten zonder saldering
+        exportKwh:       +p1.exp.toFixed(0),
+        importKwh:       +p1.imp.toFixed(0),
+        avgPrijs:        +prijzen.avg_consumer.toFixed(3),
+        spread:          +prijzen.spread_consumer.toFixed(3),
+        p25:             +prijzen.p25_consumer.toFixed(3),
+        p75:             +prijzen.p75_consumer.toFixed(3),
+        p25spot:         +prijzen.p25_spot.toFixed(3),
+        avgSpot:         +prijzen.avg_spot.toFixed(3),
+        negUren:         +prijzen.negatieveUrenPerMaand.toFixed(1),
+        negSpot:         +prijzen.gemNegatieveSpot.toFixed(3),
       };
     });
 
-    const jaarTotaal     = +maanden.reduce((s, m) => s + (m.proj     || 0), 0).toFixed(2);
-    const jaarTotaalZon  = +maanden.reduce((s, m) => s + (m.projZon  || 0), 0).toFixed(2);
-    const jaarTotaalGrid = +maanden.reduce((s, m) => s + (m.projGrid || 0), 0).toFixed(2);
-    const jaarTotaalNeg  = +maanden.reduce((s, m) => s + (m.projNeg  || 0), 0).toFixed(2);
+    const jaarTotaal          = +maanden.reduce((s, m) => s + (m.proj            || 0), 0).toFixed(2);
+    const jaarTotaalZon       = +maanden.reduce((s, m) => s + (m.projZon         || 0), 0).toFixed(2);
+    const jaarTotaalGrid      = +maanden.reduce((s, m) => s + (m.projGrid        || 0), 0).toFixed(2);
+    const jaarTotaalNeg       = +maanden.reduce((s, m) => s + (m.projNeg         || 0), 0).toFixed(2);
+    const jaarTotaalZS        = +maanden.reduce((s, m) => s + (m.projZS          || 0), 0).toFixed(2);
+    const jaarEnergiekosten   = +maanden.reduce((s, m) => s + (m.energiekosten   || 0), 0).toFixed(2);
+    const jaarEnergiekostenZS = +maanden.reduce((s, m) => s + (m.energiekostenZS || 0), 0).toFixed(2);
 
-    const resultaat = { maanden, jaarTotaal, jaarTotaalZon, jaarTotaalGrid, jaarTotaalNeg };
+    const resultaat = {
+      maanden,
+      jaarTotaal, jaarTotaalZon, jaarTotaalGrid, jaarTotaalNeg,
+      jaarTotaalZS,          // batterijwinst in het zonder-saldering scenario
+      jaarEnergiekosten,     // variabele stroomkosten zonder batterij, met saldering
+      jaarEnergiekostenZS,   // variabele stroomkosten zonder batterij, zonder saldering
+    };
     await sql`
       INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
-      VALUES ('projectie_cache_v10', ${JSON.stringify(resultaat)}, NOW())
+      VALUES ('projectie_cache_v11', ${JSON.stringify(resultaat)}, NOW())
       ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
     `.catch(() => {});
 
     // Verwijder oude cache-versies (opruimen)
-    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5','projectie_cache_v6','projectie_cache_v7','projectie_cache_v8','projectie_cache_v9')`.catch(() => {});
+    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5','projectie_cache_v6','projectie_cache_v7','projectie_cache_v8','projectie_cache_v9','projectie_cache_v10')`.catch(() => {});
 
     return Response.json({ success: true, ...resultaat });
 
