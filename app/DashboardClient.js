@@ -92,56 +92,38 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div className="bg-gray-800 rounded-xl p-5">
-            <h2 className="font-semibold text-gray-200 mb-4">Cumulatieve winst</h2>
-            {data.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={cumulatief(data)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="datum" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={d => String(d).slice(5)} />
-                  <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} />
-                  <Tooltip formatter={v => [`€${v.toFixed(2)}`, 'Winst']} labelFormatter={d => new Date(d).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} contentStyle={{ background: '#1F2937', border: 'none', borderRadius: '8px' }} labelStyle={{ color: '#9CA3AF' }} />
-                  <Line type="monotone" dataKey="cumulatief" stroke="#10B981" dot={false} strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[220px] flex items-center justify-center text-gray-500 text-sm">Nog geen data beschikbaar</div>
-            )}
-          </div>
+        <SeizoenProjectie maandActueel={maandActueel(data)} />
 
-          <div className="bg-gray-800 rounded-xl p-5">
-            <h2 className="font-semibold text-gray-200 mb-4">Recente dagen</h2>
-            {data.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-gray-500 text-xs border-b border-gray-700">
-                      <th className="text-left py-2">Datum</th>
-                      <th className="text-right py-2">Zon (kWh)</th>
-                      <th className="text-right py-2">Naar net</th>
-                      <th className="text-right py-2">Winst</th>
+        <div className="bg-gray-800 rounded-xl p-5 mb-6">
+          <h2 className="font-semibold text-gray-200 mb-4">Recente dagen</h2>
+          {data.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-500 text-xs border-b border-gray-700">
+                    <th className="text-left py-2">Datum</th>
+                    <th className="text-right py-2">Zon (kWh)</th>
+                    <th className="text-right py-2">Naar net</th>
+                    <th className="text-right py-2">Winst</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...data].reverse().slice(0, 8).map(d => (
+                    <tr key={d.datum} className="border-b border-gray-700">
+                      <td className="py-2 text-gray-300">{new Date(d.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}</td>
+                      <td className="py-2 text-right text-yellow-400">{parseFloat(d.solar_yield_kwh || 0).toFixed(1)}</td>
+                      <td className="py-2 text-right text-blue-400">{parseFloat(d.net_export_kwh || 0).toFixed(2)}</td>
+                      <td className="py-2 text-right text-green-400 font-medium">€{parseFloat(d.winst_euro || 0).toFixed(2)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {[...data].reverse().slice(0, 8).map(d => (
-                      <tr key={d.datum} className="border-b border-gray-700">
-                        <td className="py-2 text-gray-300">{new Date(d.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}</td>
-                        <td className="py-2 text-right text-yellow-400">{parseFloat(d.solar_yield_kwh || 0).toFixed(1)}</td>
-                        <td className="py-2 text-right text-blue-400">{parseFloat(d.net_export_kwh || 0).toFixed(2)}</td>
-                        <td className="py-2 text-right text-green-400 font-medium">€{parseFloat(d.winst_euro || 0).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-500 text-sm">Nog geen data beschikbaar</div>
-            )}
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="h-16 flex items-center justify-center text-gray-500 text-sm">Nog geen data beschikbaar</div>
+          )}
         </div>
 
-        <SeizoenProjectie />
         <OnbalansTegel />
         {/* <TennetOnbalans /> */}
         {/* <EssSetpuntControle /> */}
@@ -607,7 +589,7 @@ function RefreshButton() {
   );
 }
 
-function SeizoenProjectie() {
+function SeizoenProjectie({ maandActueel = {} }) {
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [fout,    setFout]    = useState(null);
@@ -623,69 +605,83 @@ function SeizoenProjectie() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Verrijk projectiemaanden met actuele 2026-data
+  const heeftActueel = Object.keys(maandActueel).length > 0;
+  const merged = (data?.maanden || []).map(m => ({
+    ...m,
+    actueel: maandActueel[m.maand] ?? null,
+  }));
+
   return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
-      <div className="flex justify-between items-baseline flex-wrap gap-2 mb-1">
+      <div className="flex justify-between items-baseline flex-wrap gap-2 mb-3">
         <div>
-          <h2 className="font-semibold text-gray-200">📅 Seizoensprojectie 2025</h2>
+          <h2 className="font-semibold text-gray-200">📅 Seizoensprojectie 2025 vs. 2026</h2>
           <p className="text-gray-500 text-xs mt-0.5">
             Wat zou de batterij hebben verdiend als die er in 2025 al had gestaan?
           </p>
         </div>
-        {data && (
-          <div className="text-right">
-            <p className="text-xs text-gray-500">Geschat jaartotaal</p>
-            <p className="text-2xl font-bold text-emerald-400">€{data.jaarTotaal?.toFixed(0)}</p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-1.5 text-xs text-gray-400">
+            <span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>
+            Simulatie 2025
           </div>
-        )}
+          {heeftActueel && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-400">
+              <span className="inline-block w-3 h-3 rounded-sm bg-cyan-400"/>
+              Werkelijk 2026
+            </div>
+          )}
+          {data && (
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Geschat jaartotaal</p>
+              <p className="text-xl font-bold text-emerald-400">€{data.jaarTotaal?.toFixed(0)}</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {loading && <p className="text-gray-500 text-sm mt-4">Prijzen ophalen &amp; simuleren… (kan ~10 s duren)</p>}
-      {fout    && <p className="text-red-400  text-sm mt-4">{fout}</p>}
+      {loading && <p className="text-gray-500 text-sm py-4">Prijzen ophalen &amp; simuleren… (kan ~10 s duren)</p>}
+      {fout    && <p className="text-red-400  text-sm py-4">{fout}</p>}
 
-      {data && (() => {
-        const maanden = data.maanden || [];
-        const maxProj = Math.max(...maanden.map(m => m.proj || 0));
-        return (
-          <>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={maanden} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-                <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} width={42} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const m = payload[0]?.payload;
-                    return (
-                      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB' }}>
-                        <p style={{ fontWeight: 700, marginBottom: 4 }}>{m.maand}</p>
-                        <p style={{ color: '#34D399', fontWeight: 700, fontSize: 16 }}>€{m.proj?.toFixed(2)}</p>
-                        <p style={{ color: '#9CA3AF', marginTop: 6 }}>↑ Teruggeleverd: {m.exportKwh} kWh</p>
-                        <p style={{ color: '#9CA3AF' }}>↓ Van net: {m.importKwh} kWh</p>
-                        <p style={{ color: '#6B7280', marginTop: 4 }}>
-                          spot p25 €{m.p25spot} · cons p75 €{m.p75} · spread €{m.spread}
-                        </p>
-                      </div>
-                    );
-                  }}
-                />
-                <Bar dataKey="proj" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                  {maanden.map((m, i) => {
-                    const ratio = maxProj > 0 ? (m.proj || 0) / maxProj : 0;
-                    const fill  = ratio >= 0.75 ? '#10B981' : ratio >= 0.4 ? '#34D399' : '#6EE7B7';
-                    return <Cell key={i} fill={fill} />;
-                  })}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <p className="text-xs text-gray-600 mt-2">
-              P1 meetdata 2025 · EPEX spotprijzen week 2 per maand · 32 kWh Pylontech
-              {data.vanCache ? ' · 📦 uit cache' : ' · 🔄 vers berekend'}
-            </p>
-          </>
-        );
-      })()}
+      {data && (
+        <>
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="20%" barGap={2}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+              <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} width={42} />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const m = payload[0]?.payload;
+                  return (
+                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB' }}>
+                      <p style={{ fontWeight: 700, marginBottom: 6 }}>{label}</p>
+                      <p style={{ color: '#34D399' }}>Simulatie 2025: <strong>€{m.proj?.toFixed(2) ?? '—'}</strong></p>
+                      {m.actueel != null && (
+                        <p style={{ color: '#22D3EE' }}>Werkelijk 2026: <strong>€{m.actueel?.toFixed(2)}</strong></p>
+                      )}
+                      <p style={{ color: '#6B7280', marginTop: 6, borderTop: '1px solid #374151', paddingTop: 5 }}>
+                        Export 2025: {m.exportKwh} kWh · Import: {m.importKwh} kWh
+                      </p>
+                      <p style={{ color: '#6B7280' }}>
+                        spot p25 €{m.p25spot} · cons p75 €{m.p75}
+                      </p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="proj"    name="Simulatie 2025" radius={[3,3,0,0]} fill="#10B981" isAnimationActive={false} />
+              <Bar dataKey="actueel" name="Werkelijk 2026"  radius={[3,3,0,0]} fill="#22D3EE" isAnimationActive={false} />
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="text-xs text-gray-600 mt-2">
+            P1 meetdata 2025 · EPEX spotprijzen week 2 per maand · 32 kWh Pylontech
+            {data.vanCache ? ' · 📦 uit cache' : ' · 🔄 vers berekend'}
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -693,6 +689,18 @@ function SeizoenProjectie() {
 function cumulatief(data) {
   let som = 0;
   return data.map(d => ({ datum: d.datum, cumulatief: +(som += parseFloat(d.winst_euro || 0)).toFixed(2) }));
+}
+
+// Groepeer dagdata per maandnaam (nl), sommeer winst_euro
+function maandActueel(data) {
+  const result = {};
+  for (const d of data) {
+    const key = MAANDEN_NL[new Date(d.datum).getMonth()];
+    result[key] = (result[key] || 0) + parseFloat(d.winst_euro || 0);
+  }
+  // Rond af op 2 decimalen
+  for (const k in result) result[k] = +result[k].toFixed(2);
+  return result;
 }
 
 // ── TenneT Onbalans Markt ──────────────────────────────────────────────────
