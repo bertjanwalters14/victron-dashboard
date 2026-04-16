@@ -24,8 +24,8 @@ function anwbPrijs(spot) {
   return (spot + 0.03 + 0.13) * 1.21;
 }
 
-// Haal een week EPEX-prijzen op voor week 2 van de gegeven maand (2025)
-// Retourneert zowel spot- als consumentenprijzen per percentiel.
+// Haal EPEX-prijzen op voor week 2 van de maand.
+// Geeft zowel kale spot-percentiel als consumentenprijzen terug.
 async function haalMaandPrijzen(maandStr) {
   const van = `${maandStr}-08T00:00:00.000Z`;
   const tot = `${maandStr}-14T23:59:59.000Z`;
@@ -45,59 +45,59 @@ async function haalMaandPrijzen(maandStr) {
   const idx25 = Math.floor(spots.length * 0.25);
   const idx75 = Math.floor(spots.length * 0.75);
 
-  const avg_consumer = consumers.reduce((s, v) => s + v, 0) / consumers.length;
-
   return {
     p25_spot:        sortedSpots[idx25],
     p75_spot:        sortedSpots[idx75],
     p25_consumer:    sortedCons[idx25],
     p75_consumer:    sortedCons[idx75],
-    avg_consumer,
+    avg_consumer:    consumers.reduce((s, v) => s + v, 0) / consumers.length,
     spread_consumer: sortedCons[idx75] - sortedCons[idx25],
   };
 }
 
-// Simuleer de maandelijkse batterijwinst.
+// Simuleer maandelijkse batterijwinst — dagmodel gebaseerd op wat DESS doet:
 //
-// Kern van de berekening:
-//   Zonder batterij: zonneoverschot gaat naar net tegen SPOT-prijs (laag, p25_spot)
-//                    import uit net kost volle consumentenprijs (hoog, avg_consumer)
-//   Met batterij:    overschot opslaan → zelf gebruiken → bespaart avg_consumer per kWh
-//                    opportunity cost = p25_spot (wat je anders had gekregen door te exporteren)
-//   Winst/kWh ≈ avg_consumer − p25_spot  (minus 10% efficiency verlies)
+// Cyclus 1 — zon-arbitrage (grootste waarde):
+//   Overdag laadt batterij van zonnepanelen in plaats van direct te exporteren (p25_spot).
+//   Avondpiek: ontladen naar huis of net, gewaardeerd tegen p75_consumer (saldering).
+//   Winst/dag = zonUit × p75_consumer − zonIn × p25_spot
+//
+// Cyclus 2 — nacht/grid-arbitrage (als spread het toelaat):
+//   Laad van net op goedkoopste uren (avg_consumer), ontlaad op piekmomenten (p75_consumer).
+//   Winst/dag = gridIn × (p75_consumer × 0.9 − avg_consumer)
+//
+// Accukosten: €0,01/kWh laden + €0,01/kWh ontladen
 //
 function simuleerMaand(maandNr, exportKwh, importKwh, prijzen) {
   const dagen = DAGEN[maandNr];
   const { p25_spot, p75_consumer, avg_consumer } = prijzen;
+  const EFF        = 0.9;   // rondreis-rendement
+  const CAPACITEIT = 25.6;  // kWh bruikbaar per dag (32 kWh × 80%)
 
-  // 32 kWh Pylontech, 80% bruikbaar → max 25.6 kWh/dag opslagcapaciteit
-  const maxOpslaan = 25.6 * dagen;
+  // ── Cyclus 1: zon-arbitrage ───────────────────────────────────────────────
+  const zonPerDag   = exportKwh / dagen;
+  const zonInPerDag = Math.min(zonPerDag, CAPACITEIT);      // laden vanuit zon
+  const zonUitPerDag = zonInPerDag * EFF;                   // netto naar huis/net
 
-  // ── 1. Zonne-zelfconsumptie ──────────────────────────────────────────────
-  // Sla zoveel van het exportoverschot op als de batterij toelaat.
-  // Gebruik dat later om import te vermijden.
-  const zonOpgeslagen = Math.min(exportKwh, maxOpslaan);
-  // 90% rondreis-rendement; nooit meer zelf verbruiken dan we importeerden
-  const zelfGebruikt  = Math.min(zonOpgeslagen * 0.9, importKwh);
-  // Besparing: vermeden import (avg_consumer) minus gemiste exportopbrengst (p25_spot)
-  const zonWinst      = zelfGebruikt * avg_consumer
-                      - (zelfGebruikt / 0.9) * p25_spot;
+  // Ontladen waardeer je tegen p75_consumer: hetzij bespaart import, hetzij verkoop
+  // aan net op piekmomenten (saldering = zelfde tarief).
+  const zonWinstPerDag = zonUitPerDag * p75_consumer
+                       - zonInPerDag  * p25_spot;           // gemiste export op zonnemoment
 
-  // ── 2. Net-arbitrage ─────────────────────────────────────────────────────
-  // Laad van net bij goedkope uren (p25_consumer), ontlaad bij dure uren (p75_consumer).
-  // Alleen als de spread het rendement dekt.
-  const arbSpread   = p75_consumer * 0.9 - avg_consumer;
-  const ruimteNaZon = Math.max(0, maxOpslaan - zonOpgeslagen);
-  const arbKwh      = arbSpread > 0.01
-    ? Math.min(ruimteNaZon * 0.25, importKwh * 0.20)
+  // ── Cyclus 2: nacht-arbitrage ─────────────────────────────────────────────
+  const ruimteNaZon    = Math.max(0, CAPACITEIT - zonInPerDag);
+  const gridSpread     = p75_consumer * EFF - avg_consumer; // laad gem., ontlaad piek
+  const gridInPerDag   = gridSpread > 0.02
+    ? Math.min(ruimteNaZon * 0.5, 12)                       // max ~halve restcapaciteit, max 12 kWh
     : 0;
-  const arbWinst    = arbKwh * arbSpread;
+  const gridWinstPerDag = gridInPerDag * gridSpread;
 
-  // ── 3. Accukosten (€0,01/kWh per laad- én ontlaadbeurt) ─────────────────
-  const totaalCycled = zelfGebruikt / 0.9 + arbKwh;
-  const accuKosten   = totaalCycled * 0.01 * 2;
+  // ── Accukosten ────────────────────────────────────────────────────────────
+  const cycledPerDag  = zonInPerDag + gridInPerDag;
+  const accuPerDag    = cycledPerDag * 0.01 * 2;            // €0,01 laden + €0,01 ontladen
 
-  return +(zonWinst + arbWinst - accuKosten).toFixed(2);
+  const winstPerDag = zonWinstPerDag + gridWinstPerDag - accuPerDag;
+  return +(winstPerDag * dagen).toFixed(2);
 }
 
 export async function GET(request) {
@@ -110,8 +110,8 @@ export async function GET(request) {
     const { neon } = await import('@neondatabase/serverless');
     const sql = neon(process.env.DATABASE_URL);
 
-    // Cache: 7 dagen geldig — sleutel _v2 om na formule-update opnieuw te berekenen
-    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v2'`.catch(() => []);
+    // Cache: 7 dagen geldig — sleutel _v3 voor dagmodel
+    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v3'`.catch(() => []);
     if (cache[0]) {
       const oud = (Date.now() - new Date(cache[0].bijgewerkt)) / 3600000;
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
@@ -148,7 +148,7 @@ export async function GET(request) {
     const resultaat = { maanden, jaarTotaal };
     await sql`
       INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
-      VALUES ('projectie_cache_v2', ${JSON.stringify(resultaat)}, NOW())
+      VALUES ('projectie_cache_v3', ${JSON.stringify(resultaat)}, NOW())
       ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
     `.catch(() => {});
 
