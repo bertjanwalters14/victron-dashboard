@@ -25,40 +25,43 @@ function anwbPrijs(spot) {
   return (spot + 0.03 + 0.13) * 1.21;
 }
 
-// Haal EPEX-prijzen op voor de VOLLEDIGE maand (niet alleen week 2).
-// Zo krijgen we de echte maandgemiddelden — inclusief dure en goedkope weken.
-async function haalMaandPrijzen(maandStr) {
-  const [jaar, maand] = maandStr.split('-').map(Number);
-  const aantalDagen   = new Date(jaar, maand, 0).getDate(); // laatste dag van de maand
+// Haal EPEX-prijzen op voor één volledige kalendermaand van één jaar.
+async function haalMaandPrijzen(jaar, maandNr) {
+  const maandStr    = `${jaar}-${String(maandNr).padStart(2, '0')}`;
+  const aantalDagen = new Date(jaar, maandNr, 0).getDate();
   const van = `${maandStr}-01T00:00:00.000Z`;
   const tot = `${maandStr}-${String(aantalDagen).padStart(2, '0')}T23:59:59.000Z`;
 
   const res = await fetch(
     `https://api.energyzero.nl/v1/energyprices?fromDate=${van}&tillDate=${tot}&interval=4&usageType=1&inclBtw=false`
   );
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   const json = await res.json();
+  return (json?.Prices || []).map(p => parseFloat(p.price));
+}
 
-  const spots = (json?.Prices || []).map(p => parseFloat(p.price));
-  if (!spots.length) return null;
+// Haal prijzen op voor dezelfde kalendermaand over 2023, 2024 én 2025,
+// pool alle uurprijzen en bereken gezamenlijke percentielstatistieken.
+// Zo middelen atypische jaren (bijv. koude snap jan 2025) uit.
+async function haalGemiddeldeMaandPrijzen(maandNr) {
+  const jaren = [2023, 2024, 2025];
+  const alleSpots = (await Promise.all(jaren.map(j => haalMaandPrijzen(j, maandNr)))).flat();
+  if (!alleSpots.length) return null;
 
-  const consumers   = spots.map(anwbPrijs);
-  const sortedSpots = [...spots].sort((a, b) => a - b);
+  const consumers   = alleSpots.map(anwbPrijs);
+  const sortedSpots = [...alleSpots].sort((a, b) => a - b);
   const sortedCons  = [...consumers].sort((a, b) => a - b);
 
-  const idx25 = Math.floor(spots.length * 0.25);
-  const idx75 = Math.floor(spots.length * 0.75);
-
-  const avg_consumer = consumers.reduce((s, v) => s + v, 0) / consumers.length;
-  const avg_spot     = spots.reduce((s, v) => s + v, 0) / spots.length;
+  const idx25 = Math.floor(alleSpots.length * 0.25);
+  const idx75 = Math.floor(alleSpots.length * 0.75);
 
   return {
     p25_spot:        sortedSpots[idx25],
     p75_spot:        sortedSpots[idx75],
     p25_consumer:    sortedCons[idx25],
     p75_consumer:    sortedCons[idx75],
-    avg_consumer,
-    avg_spot,
+    avg_consumer:    consumers.reduce((s, v) => s + v, 0) / consumers.length,
+    avg_spot:        alleSpots.reduce((s, v) => s + v, 0) / alleSpots.length,
     spread_consumer: sortedCons[idx75] - sortedCons[idx25],
   };
 }
@@ -137,16 +140,18 @@ export async function GET(request) {
     const sql = neon(process.env.DATABASE_URL);
 
     // Cache: 7 dagen — sleutel _v5 (energiekosten toegevoegd)
-    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v7'`.catch(() => []);
+    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v9'`.catch(() => []);
     if (cache[0]) {
       const oud = (Date.now() - new Date(cache[0].bijgewerkt)) / 3600000;
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
     }
 
-    // Haal EPEX-maandprijzen op — volledige maanden, parallel
-    const maandKeys      = Array.from({ length: 12 }, (_, i) => `2025-${String(i + 1).padStart(2, '0')}`);
-    const prijsResultaten = await Promise.all(maandKeys.map(k => haalMaandPrijzen(k)));
-    const maandPrijzen   = Object.fromEntries(maandKeys.map((k, i) => [k, prijsResultaten[i]]));
+    // Haal EPEX-prijzen op: 2023+2024+2025 per maand, allemaal parallel (36 calls)
+    const maandNummers   = Array.from({ length: 12 }, (_, i) => i + 1);
+    const prijsResultaten = await Promise.all(maandNummers.map(m => haalGemiddeldeMaandPrijzen(m)));
+    const maandPrijzen   = Object.fromEntries(
+      maandNummers.map((m, i) => [`2025-${String(m).padStart(2, '0')}`, prijsResultaten[i]])
+    );
 
     // Simuleer per maand
     const maanden = Object.entries(P1_2025).map(([key, p1]) => {
@@ -179,12 +184,12 @@ export async function GET(request) {
     const resultaat = { maanden, jaarTotaal, jaarTotaalZon, jaarTotaalGrid };
     await sql`
       INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
-      VALUES ('projectie_cache_v7', ${JSON.stringify(resultaat)}, NOW())
+      VALUES ('projectie_cache_v9', ${JSON.stringify(resultaat)}, NOW())
       ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
     `.catch(() => {});
 
     // Verwijder oude cache-versies (opruimen)
-    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5','projectie_cache_v6')`.catch(() => {});
+    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5','projectie_cache_v6','projectie_cache_v7','projectie_cache_v8')`.catch(() => {});
 
     return Response.json({ success: true, ...resultaat });
 
