@@ -94,13 +94,16 @@ function simuleerMaand(maandNr, exportKwh, importKwh, prijzen) {
   const zonWinstPerDag = zonUitPerDag * p75_consumer - zonInPerDag * p25_spot;
 
   // ── Component B: goedkoop inkopen voor warmtepomp ────────────────────────
-  // Laad 's nachts op p25 → verbruik warmtepomp betaalt avg_consumer in plaats van peak.
-  // Besparing per kWh geladen: avg_consumer × EFF − p25_consumer.
-  const gridSpread     = avg_consumer * EFF - p25_consumer;
+  // DESS laadt op de goedkoopste uren (p25) en ontlaadt op de duurste uren (p75),
+  // ook als het verbruik door de warmtepomp gaat — het huis draait dan op batterij
+  // ipv duur net. Besparing per kWh geladen: p75_consumer × EFF − p25_consumer.
+  const gridSpread     = p75_consumer * EFF - p25_consumer;
   const ruimteNaZon    = Math.max(0, CAPACITEIT - zonInPerDag);
   const verbruikPerDag = importKwh / dagen;
-  const gridInPerDag   = gridSpread > 0.005
-    ? Math.min(ruimteNaZon * 0.5, 12, verbruikPerDag * 0.5)
+  // In winter met warmtepomp: bijna volle cyclus mogelijk (max 16 kWh/dag van net,
+  // nooit meer dan 85% restcapaciteit, nooit meer dan 60% dagverbruik)
+  const gridInPerDag   = gridSpread > 0.01
+    ? Math.min(ruimteNaZon * 0.85, 16, verbruikPerDag * 0.6)
     : 0;
   const gridWinstPerDag = gridInPerDag * gridSpread;
 
@@ -134,7 +137,7 @@ export async function GET(request) {
     const sql = neon(process.env.DATABASE_URL);
 
     // Cache: 7 dagen — sleutel _v5 (energiekosten toegevoegd)
-    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v6'`.catch(() => []);
+    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v7'`.catch(() => []);
     if (cache[0]) {
       const oud = (Date.now() - new Date(cache[0].bijgewerkt)) / 3600000;
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
@@ -176,12 +179,12 @@ export async function GET(request) {
     const resultaat = { maanden, jaarTotaal, jaarTotaalZon, jaarTotaalGrid };
     await sql`
       INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
-      VALUES ('projectie_cache_v6', ${JSON.stringify(resultaat)}, NOW())
+      VALUES ('projectie_cache_v7', ${JSON.stringify(resultaat)}, NOW())
       ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
     `.catch(() => {});
 
     // Verwijder oude cache-versies (opruimen)
-    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5')`.catch(() => {});
+    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5','projectie_cache_v6')`.catch(() => {});
 
     return Response.json({ success: true, ...resultaat });
 
