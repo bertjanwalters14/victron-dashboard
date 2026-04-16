@@ -666,7 +666,7 @@ function SeizoenProjectie({ maandActueel = {} }) {
                         Export 2025: {m.exportKwh} kWh · Import: {m.importKwh} kWh
                       </p>
                       <p style={{ color: '#6B7280' }}>
-                        spot p25 €{m.p25spot} · cons p75 €{m.p75}
+                        Gem. prijs: €{m.avgPrijs}/kWh · p25 €{m.p25} · p75 €{m.p75}
                       </p>
                     </div>
                   );
