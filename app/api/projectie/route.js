@@ -55,77 +55,101 @@ async function haalGemiddeldeMaandPrijzen(maandNr) {
   const idx25 = Math.floor(alleSpots.length * 0.25);
   const idx75 = Math.floor(alleSpots.length * 0.75);
 
+  // Negatieve spotprijsuren: DESS laadt maximaal bij als spotprijs < 0
+  const negatiefSpots = alleSpots.filter(s => s < 0);
+  const negatieveUrenPerMaand = negatiefSpots.length / jaren.length;
+  const gemNegatieveSpot = negatiefSpots.length > 0
+    ? negatiefSpots.reduce((s, v) => s + v, 0) / negatiefSpots.length
+    : 0;
+
   return {
-    p25_spot:        sortedSpots[idx25],
-    p75_spot:        sortedSpots[idx75],
-    p25_consumer:    sortedCons[idx25],
-    p75_consumer:    sortedCons[idx75],
-    avg_consumer:    consumers.reduce((s, v) => s + v, 0) / consumers.length,
-    avg_spot:        alleSpots.reduce((s, v) => s + v, 0) / alleSpots.length,
-    spread_consumer: sortedCons[idx75] - sortedCons[idx25],
+    p25_spot:             sortedSpots[idx25],
+    p75_spot:             sortedSpots[idx75],
+    p25_consumer:         sortedCons[idx25],
+    p75_consumer:         sortedCons[idx75],
+    avg_consumer:         consumers.reduce((s, v) => s + v, 0) / consumers.length,
+    avg_spot:             alleSpots.reduce((s, v) => s + v, 0) / alleSpots.length,
+    spread_consumer:      sortedCons[idx75] - sortedCons[idx25],
+    negatieveUrenPerMaand,
+    gemNegatieveSpot,
   };
 }
 
 // Simuleer maandelijkse batterijwinst — dagmodel.
 //
-// Cyclus 1 — zon-arbitrage:
+// Component A — zonne-arbitrage:
 //   Overdag laadt batterij van panelen (gemiste export = p25_spot).
 //   Ontladen waardeer je tegen p75_consumer: DESS kiest bewust de piekuren.
 //   Winst/dag = zonUit × p75_consumer − zonIn × p25_spot
 //
-// Cyclus 2 — grid time-shifting (warmtepomp model):
+// Component B — grid time-shifting (warmtepomp model):
 //   Laad 's nachts van net op goedkoopste uren (p25_consumer).
-//   Verbruik overdag voor warmtepomp — vervangt GEMIDDELD verbruik (avg_consumer),
-//   niet alleen piekmomenten. Zo modelleren we dat je betaalt, maar minder.
-//   Winst/dag = gridIn × (avg_consumer × EFF − p25_consumer)
+//   Ontladen op duurste uren (p75_consumer), ook voor warmtepomp.
+//   Winst/dag = gridIn × (p75_consumer × EFF − p25_consumer)
+//
+// Component C — negatieve spotprijzen:
+//   Als EPEX spot < 0 laadt DESS maximaal bij van net (word betaald voor verbruik).
+//   Aanname: 5 kW laadvermogen, gemiddeld 4 kWh per negatief uur (80% benutting).
+//   Waarde: je ontvangt |negConsumerPrijs| voor laden + bespaart avg_consumer bij ontladen.
 //
 // Accukosten: €0,01/kWh laden + €0,01/kWh ontladen
-//
-// Geeft een uitsplitsing terug: totaal + twee componenten
 function simuleerMaand(maandNr, exportKwh, importKwh, prijzen) {
   const dagen = DAGEN[maandNr];
-  const { p25_spot, p25_consumer, p75_consumer, avg_consumer } = prijzen;
+  const {
+    p25_spot, p25_consumer, p75_consumer, avg_consumer,
+    negatieveUrenPerMaand, gemNegatieveSpot,
+  } = prijzen;
   const EFF        = 0.9;
   const CAPACITEIT = 25.6;  // kWh/dag (32 kWh × 80%)
 
   // ── Component A: zonne-arbitrage ─────────────────────────────────────────
-  // Sla goedkope middagzon op → verkoop/gebruik op duur avondpiekmoment.
-  // Meerwaarde t.o.v. direct exporteren: (p75_consumer × EFF − p25_spot) per kWh.
   const zonPerDag      = exportKwh / dagen;
   const zonInPerDag    = Math.min(zonPerDag, CAPACITEIT);
   const zonUitPerDag   = zonInPerDag * EFF;
   const zonWinstPerDag = zonUitPerDag * p75_consumer - zonInPerDag * p25_spot;
 
   // ── Component B: goedkoop inkopen voor warmtepomp ────────────────────────
-  // DESS laadt op de goedkoopste uren (p25) en ontlaadt op de duurste uren (p75),
-  // ook als het verbruik door de warmtepomp gaat — het huis draait dan op batterij
-  // ipv duur net. Besparing per kWh geladen: p75_consumer × EFF − p25_consumer.
   const gridSpread     = p75_consumer * EFF - p25_consumer;
   const ruimteNaZon    = Math.max(0, CAPACITEIT - zonInPerDag);
   const verbruikPerDag = importKwh / dagen;
-  // In winter met warmtepomp: bijna volle cyclus mogelijk (max 16 kWh/dag van net,
-  // nooit meer dan 85% restcapaciteit, nooit meer dan 60% dagverbruik)
   const gridInPerDag   = gridSpread > 0.01
     ? Math.min(ruimteNaZon * 0.85, 16, verbruikPerDag * 0.6)
     : 0;
   const gridWinstPerDag = gridInPerDag * gridSpread;
 
-  // ── Accukosten ────────────────────────────────────────────────────────────
-  const cycledPerDag = zonInPerDag + gridInPerDag;
-  const accuPerDag   = cycledPerDag * 0.01 * 2;
+  // ── Component C: negatieve spotprijsuren ─────────────────────────────────
+  // Tijdens EPEX spot < 0 laadt DESS de accu vol — los van de normale arbitrage.
+  // Per negatief uur: 5 kW lader × ~80% benutting = 4 kWh geladen.
+  // Consumentenprijs bij negatief spot: anwbPrijs(gemNegatieveSpot) — kan laag/negatief zijn.
+  // Waarde per kWh: avg_consumer × EFF (besparing bij ontladen) − negConsumerPrijs (laadkosten).
+  const negUurPerDag      = negatieveUrenPerMaand / dagen;
+  const negConsumerPrijs  = anwbPrijs(gemNegatieveSpot);
+  const negCapaciteit     = Math.max(0, ruimteNaZon - gridInPerDag); // resterende ruimte na B
+  const negInPerDag       = Math.min(negUurPerDag * 4, negCapaciteit);
+  const negWinstPerDag    = negInPerDag > 0
+    ? negInPerDag * (avg_consumer * EFF - negConsumerPrijs)
+    : 0;
 
-  // Verdeel accukosten proportioneel over de twee componenten
-  const totaalWinst = zonWinstPerDag + gridWinstPerDag - accuPerDag;
-  const zonFractie  = (zonWinstPerDag + gridWinstPerDag) > 0
-    ? zonWinstPerDag / (zonWinstPerDag + gridWinstPerDag)
-    : 0.5;
-  const zonNetto  = +(  (zonWinstPerDag  - accuPerDag * zonFractie)       * dagen).toFixed(2);
-  const gridNetto = +((gridWinstPerDag  - accuPerDag * (1 - zonFractie)) * dagen).toFixed(2);
+  // ── Accukosten ────────────────────────────────────────────────────────────
+  const cycledPerDag  = zonInPerDag + gridInPerDag + negInPerDag;
+  const accuPerDag    = cycledPerDag * 0.01 * 2;
+
+  // Verdeel accukosten proportioneel over de drie componenten
+  const brutTotaal = zonWinstPerDag + gridWinstPerDag + negWinstPerDag;
+  const zonFractie  = brutTotaal > 0 ? zonWinstPerDag  / brutTotaal : 0.34;
+  const gridFractie = brutTotaal > 0 ? gridWinstPerDag / brutTotaal : 0.33;
+  const negFractie  = brutTotaal > 0 ? negWinstPerDag  / brutTotaal : 0.33;
+
+  const totaalWinst = brutTotaal - accuPerDag;
+  const zonNetto  = +((zonWinstPerDag  - accuPerDag * zonFractie)  * dagen).toFixed(2);
+  const gridNetto = +((gridWinstPerDag - accuPerDag * gridFractie) * dagen).toFixed(2);
+  const negNetto  = +((negWinstPerDag  - accuPerDag * negFractie)  * dagen).toFixed(2);
 
   return {
     proj:     +(totaalWinst * dagen).toFixed(2),
     projZon:  zonNetto,   // extra opbrengst door zonnestroom op piekmoment te verkopen
     projGrid: gridNetto,  // besparing door goedkoop inkopen voor warmtepomp
+    projNeg:  negNetto,   // winst door laden tijdens negatieve EPEX-prijzen
   };
 }
 
@@ -139,8 +163,7 @@ export async function GET(request) {
     const { neon } = await import('@neondatabase/serverless');
     const sql = neon(process.env.DATABASE_URL);
 
-    // Cache: 7 dagen — sleutel _v5 (energiekosten toegevoegd)
-    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v9'`.catch(() => []);
+    const cache = await sql`SELECT waarde, bijgewerkt FROM instellingen WHERE sleutel = 'projectie_cache_v10'`.catch(() => []);
     if (cache[0]) {
       const oud = (Date.now() - new Date(cache[0].bijgewerkt)) / 3600000;
       if (oud < 168) return Response.json({ success: true, ...JSON.parse(cache[0].waarde), vanCache: true });
@@ -159,13 +182,13 @@ export async function GET(request) {
       const prijzen = maandPrijzen[key];
       if (!prijzen) return { maand: MAANDEN_NL[maandNr], proj: null };
       const sim = simuleerMaand(maandNr, p1.exp, p1.imp, prijzen);
-      // Energiekosten zonder batterij: wat je die maand aan stroom zou betalen
       const energiekosten = +(p1.imp * prijzen.avg_consumer).toFixed(2);
       return {
         maand:        MAANDEN_NL[maandNr],
         proj:         sim.proj,
         projZon:      sim.projZon,
         projGrid:     sim.projGrid,
+        projNeg:      sim.projNeg,
         energiekosten,
         exportKwh:    +p1.exp.toFixed(0),
         importKwh:    +p1.imp.toFixed(0),
@@ -174,22 +197,25 @@ export async function GET(request) {
         p25:          +prijzen.p25_consumer.toFixed(3),
         p75:          +prijzen.p75_consumer.toFixed(3),
         p25spot:      +prijzen.p25_spot.toFixed(3),
+        negUren:      +prijzen.negatieveUrenPerMaand.toFixed(1),
+        negSpot:      +prijzen.gemNegatieveSpot.toFixed(3),
       };
     });
 
     const jaarTotaal     = +maanden.reduce((s, m) => s + (m.proj     || 0), 0).toFixed(2);
     const jaarTotaalZon  = +maanden.reduce((s, m) => s + (m.projZon  || 0), 0).toFixed(2);
     const jaarTotaalGrid = +maanden.reduce((s, m) => s + (m.projGrid || 0), 0).toFixed(2);
+    const jaarTotaalNeg  = +maanden.reduce((s, m) => s + (m.projNeg  || 0), 0).toFixed(2);
 
-    const resultaat = { maanden, jaarTotaal, jaarTotaalZon, jaarTotaalGrid };
+    const resultaat = { maanden, jaarTotaal, jaarTotaalZon, jaarTotaalGrid, jaarTotaalNeg };
     await sql`
       INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
-      VALUES ('projectie_cache_v9', ${JSON.stringify(resultaat)}, NOW())
+      VALUES ('projectie_cache_v10', ${JSON.stringify(resultaat)}, NOW())
       ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde, bijgewerkt = NOW()
     `.catch(() => {});
 
     // Verwijder oude cache-versies (opruimen)
-    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5','projectie_cache_v6','projectie_cache_v7','projectie_cache_v8')`.catch(() => {});
+    await sql`DELETE FROM instellingen WHERE sleutel IN ('projectie_cache','projectie_cache_v2','projectie_cache_v3','projectie_cache_v4','projectie_cache_v5','projectie_cache_v6','projectie_cache_v7','projectie_cache_v8','projectie_cache_v9')`.catch(() => {});
 
     return Response.json({ success: true, ...resultaat });
 
