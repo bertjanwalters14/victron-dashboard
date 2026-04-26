@@ -64,6 +64,18 @@ export async function GET(request) {
       )
     `;
 
+    await sql`
+      CREATE TABLE IF NOT EXISTS energie_data (
+        datum            DATE PRIMARY KEY,
+        solar_yield_kwh  NUMERIC,
+        verbruik_kwh     NUMERIC,
+        net_import_kwh   NUMERIC,
+        net_export_kwh   NUMERIC,
+        winst_euro       NUMERIC,
+        bat_meerwaarde   NUMERIC,
+        bijgewerkt       TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
     await sql`ALTER TABLE energie_data ADD COLUMN IF NOT EXISTS bat_meerwaarde NUMERIC`;
 
     await sql`
