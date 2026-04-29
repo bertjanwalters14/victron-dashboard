@@ -605,16 +605,27 @@ const P1_2025 = [
   { maand: 'dec', imp: 651, exp: 64  },
 ];
 
+// Alle maanden van 2026-01 t/m huidige maand
+function alleMaandenTotNu() {
+  const now = new Date();
+  const result = [];
+  let jaar = 2026, m = 1;
+  while (jaar < now.getFullYear() || (jaar === now.getFullYear() && m <= now.getMonth() + 1)) {
+    result.push(`${jaar}-${String(m).padStart(2, '0')}`);
+    if (++m > 12) { m = 1; jaar++; }
+  }
+  return result;
+}
+const ALLE_MAANDEN = alleMaandenTotNu();
+
 function ImportExportWidget({ data }) {
   const [view, setView] = useState('jaar');
 
-  // Beschikbare maanden uit de data (YYYY-MM), gesorteerd
-  const beschikbareMaanden = [...new Set(data.map(d => d.datum.slice(0, 7)))].sort();
-  const defaultMaand = beschikbareMaanden.at(-1) ?? new Date().toISOString().slice(0, 7);
-  const [selectedMaand, setSelectedMaand] = useState(defaultMaand);
-  const [selectedDag,   setSelectedDag]   = useState(data.at(-1)?.datum ?? null);
+  const huidigeMaand = new Date().toISOString().slice(0, 7);
+  const [selectedMaand, setSelectedMaand] = useState(huidigeMaand);
+  const [selectedDag,   setSelectedDag]   = useState(new Date().toISOString().slice(0, 10));
 
-  const maandIdx = beschikbareMaanden.indexOf(selectedMaand);
+  const maandIdx = ALLE_MAANDEN.indexOf(selectedMaand);
 
   function openDag(datum) { setSelectedDag(datum); setView('dag'); }
 
@@ -637,7 +648,6 @@ function ImportExportWidget({ data }) {
       {view === 'maand' && (
         <MaandView
           data={data}
-          beschikbareMaanden={beschikbareMaanden}
           selectedMaand={selectedMaand}
           setSelectedMaand={setSelectedMaand}
           maandIdx={maandIdx}
@@ -749,15 +759,15 @@ function JaarView({ data }) {
 }
 
 // ── Maandoverzicht: dagelijkse import/export voor één maand ──────────────────
-function MaandView({ data, beschikbareMaanden, selectedMaand, setSelectedMaand, maandIdx, onDagClick }) {
+function MaandView({ data, selectedMaand, setSelectedMaand, maandIdx, onDagClick }) {
   const maandData = data
     .filter(d => d.datum.startsWith(selectedMaand))
     .map(d => ({
-      dag:  parseInt(d.datum.slice(8), 10),
+      dag:   parseInt(d.datum.slice(8), 10),
       datum: d.datum,
-      imp:  +parseFloat(d.net_import_kwh || 0).toFixed(2),
-      exp:  +parseFloat(d.net_export_kwh || 0).toFixed(2),
-      zon:  +parseFloat(d.solar_yield_kwh || 0).toFixed(2),
+      imp:   +parseFloat(d.net_import_kwh || 0).toFixed(2),
+      exp:   +parseFloat(d.net_export_kwh || 0).toFixed(2),
+      zon:   +parseFloat(d.solar_yield_kwh || 0).toFixed(2),
       winst: +parseFloat(d.winst_euro || 0).toFixed(2),
     }));
 
@@ -783,20 +793,31 @@ function MaandView({ data, beschikbareMaanden, selectedMaand, setSelectedMaand, 
 
   return (
     <>
-      {/* Navigatie */}
+      {/* Navigatie — door alle maanden van 2026-01 t/m nu */}
       <div className="flex items-center justify-between mb-4">
-        <button onClick={() => setSelectedMaand(beschikbareMaanden[maandIdx - 1])} disabled={maandIdx <= 0}
+        <button onClick={() => setSelectedMaand(ALLE_MAANDEN[maandIdx - 1])} disabled={maandIdx <= 0}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">‹</button>
         <div className="text-center">
-          <p className="font-semibold text-gray-200">{maandLabel}</p>
-          <p className="text-xs text-gray-500">{maandData.length} dagen · imp {totImp} kWh · exp {totExp} kWh</p>
+          <select
+            value={selectedMaand}
+            onChange={e => setSelectedMaand(e.target.value)}
+            className="bg-gray-700 text-gray-200 text-sm font-semibold rounded px-2 py-1 border border-gray-600 focus:outline-none"
+          >
+            {ALLE_MAANDEN.map(m => {
+              const [j, mn] = m.split('-');
+              return <option key={m} value={m}>{MAAND_NAMEN[parseInt(mn,10)-1]} {j}</option>;
+            })}
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            {maandData.length > 0 ? `${maandData.length} dagen · imp ${totImp} kWh · exp ${totExp} kWh` : 'geen data'}
+          </p>
         </div>
-        <button onClick={() => setSelectedMaand(beschikbareMaanden[maandIdx + 1])} disabled={maandIdx >= beschikbareMaanden.length - 1}
+        <button onClick={() => setSelectedMaand(ALLE_MAANDEN[maandIdx + 1])} disabled={maandIdx >= ALLE_MAANDEN.length - 1}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">›</button>
       </div>
 
       {maandData.length === 0 ? (
-        <p className="text-gray-500 text-sm text-center py-8">Geen data voor {maandLabel}</p>
+        <p className="text-gray-500 text-sm text-center py-10">Geen data beschikbaar voor {maandLabel}</p>
       ) : (
         <>
           <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-400">
@@ -808,7 +829,7 @@ function MaandView({ data, beschikbareMaanden, selectedMaand, setSelectedMaand, 
             <BarChart data={maandData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="20%" barGap={2}
               onClick={e => e?.activePayload?.[0] && onDagClick(e.activePayload[0].payload.datum)}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis dataKey="dag" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `${v}`} />
+              <XAxis dataKey="dag" tick={{ fontSize: 10, fill: '#9CA3AF' }} />
               <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} width={36} unit=" kWh" />
               <Tooltip content={tip} />
               <Bar dataKey="imp" radius={[2,2,0,0]} fill="#3B82F6" isAnimationActive={false} cursor="pointer" />
@@ -823,25 +844,39 @@ function MaandView({ data, beschikbareMaanden, selectedMaand, setSelectedMaand, 
 
 // ── Dagdetail: KPI-kaartjes voor één dag ─────────────────────────────────────
 function DagView({ data, selectedDag, setSelectedDag }) {
-  const gesorteerd = [...data].sort((a, b) => a.datum.localeCompare(b.datum));
-  const idx = gesorteerd.findIndex(d => d.datum === selectedDag);
-  const dag = idx >= 0 ? gesorteerd[idx] : null;
+  const dagMap = Object.fromEntries(data.map(d => [d.datum, d]));
+  const dag = dagMap[selectedDag] ?? null;
+
+  const vandaag = new Date().toISOString().slice(0, 10);
+  const vroegste = '2026-01-01';
 
   function nav(delta) {
-    const next = gesorteerd[idx + delta];
-    if (next) setSelectedDag(next.datum);
+    const d = new Date(selectedDag);
+    d.setDate(d.getDate() + delta);
+    const nieuw = d.toISOString().slice(0, 10);
+    if (nieuw >= vroegste && nieuw <= vandaag) setSelectedDag(nieuw);
   }
 
-  const fmt = iso => new Date(iso).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fmt = iso => new Date(iso).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <>
-      {/* Navigatie */}
+      {/* Navigatie met datumkiezer */}
       <div className="flex items-center justify-between mb-5">
-        <button onClick={() => nav(-1)} disabled={idx <= 0}
+        <button onClick={() => nav(-1)} disabled={selectedDag <= vroegste}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">‹</button>
-        <p className="font-semibold text-gray-200 capitalize">{dag ? fmt(dag.datum) : '—'}</p>
-        <button onClick={() => nav(1)} disabled={idx >= gesorteerd.length - 1}
+        <div className="text-center">
+          <input
+            type="date"
+            value={selectedDag ?? ''}
+            min={vroegste}
+            max={vandaag}
+            onChange={e => e.target.value && setSelectedDag(e.target.value)}
+            className="bg-gray-700 text-gray-200 text-sm font-semibold rounded px-2 py-1 border border-gray-600 focus:outline-none"
+          />
+          <p className="text-xs text-gray-500 mt-1 capitalize">{selectedDag ? fmt(selectedDag) : ''}</p>
+        </div>
+        <button onClick={() => nav(1)} disabled={selectedDag >= vandaag}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">›</button>
       </div>
 
