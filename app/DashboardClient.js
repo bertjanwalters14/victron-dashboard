@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 import { useState, useEffect } from 'react';
-import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, ReferenceArea, ComposedChart, Area } from 'recharts';
+import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 
 const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-04');
@@ -124,9 +124,8 @@ export default function DashboardClient({ data }) {
           )}
         </div>
 
-        <OnbalansTegel />
-        {/* <TennetOnbalans /> */}
-        {/* <EssSetpuntControle /> */}
+        <ZonTegel />
+
         <p className="text-center text-gray-600 text-xs mt-6">
           Data wordt elke nacht om 00:01 automatisch bijgewerkt
         </p>
@@ -135,41 +134,27 @@ export default function DashboardClient({ data }) {
   );
 }
 
-function wattLabel(w) {
-  if (w == null) return '—';
-  const abs = Math.abs(w);
-  return abs >= 1000 ? `${(abs / 1000).toFixed(1)} kW` : `${abs} W`;
-}
-
-function minsGeleden(iso) {
-  if (!iso) return '';
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (diff < 1)  return '< 1 min geleden';
-  if (diff === 1) return '1 min geleden';
-  if (diff < 60) return `${diff} min geleden`;
-  return `${Math.floor(diff / 60)}u geleden`;
-}
-
-function OnbalansTegel() {
-  const [data, setData]       = useState(null);
+function ZonTegel() {
+  const [zon, setZon]         = useState(null);
   const [loading, setLoading] = useState(true);
-  const [modus, setModus]     = useState('handel');
 
-  async function fetchOnbalans() {
+  async function fetchZon() {
     try {
-      const res  = await fetch(`/api/onbalans?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' });
+      const res  = await fetch(`/api/solcast?secret=Nummer14!`);
       const json = await res.json();
-      if (json.success) {
-        setData(json);
-        if (json.modus) setModus(json.modus);
-      }
+      if (json.success) setZon({
+        vandaagKwh:    json.vandaagKwh,
+        vandaagGemeten: json.vandaagGeproduceerdKwh ?? null,
+        morgenKwh:     json.morgenKwh,
+        grafiekData:   json.grafiekData || [],
+      });
     } catch(e) { console.error(e); }
     setLoading(false);
   }
 
   useEffect(() => {
-    fetchOnbalans();
-    const iv = setInterval(fetchOnbalans, 60 * 1000);
+    fetchZon();
+    const iv = setInterval(fetchZon, 15 * 60 * 1000); // elke 15 min
     return () => clearInterval(iv);
   }, []);
 
@@ -359,67 +344,16 @@ function OnbalansTegel() {
         </div>
       )}
 
-      {/* ── Zonneprognose ── */}
-      <ZonPrognose zon={data?.zonPrognose} />
-
-      <p className="text-xs text-gray-600 pt-1 border-t border-gray-700">
-        Ververst elke minuut&ensp;·&ensp;
-        {modus === 'groen' ? 'Groen modus actief' : 'Handel modus actief'}&ensp;·&ensp;
-        {data?.tijdstip ? `API ${minsGeleden(data.tijdstip)}` : ''}
-      </p>
+  if (loading) return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <p className="text-gray-500 text-sm">☀️ Zonneprognose laden…</p>
     </div>
   );
-}
-
-function ModusToggle({ modus, onWissel }) {
-  const [bezig, setBezig] = useState(false);
-  const isGroen = modus === 'groen';
-
-  async function wisselModus() {
-    const nieuw = isGroen ? 'handel' : 'groen';
-    setBezig(true);
-    try {
-      const res  = await fetch('/api/modus?secret=Nummer14!', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ modus: nieuw }),
-      });
-      const json = await res.json();
-      if (json.success) onWissel(nieuw);
-    } catch(e) { console.error('Modus wisselen mislukt:', e); }
-    setBezig(false);
-  }
 
   return (
-    <button
-      onClick={wisselModus}
-      disabled={bezig}
-      title={isGroen ? 'Klik om naar Handel modus te wisselen' : 'Klik om naar Groen modus te wisselen'}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
-        disabled:opacity-50 select-none
-        ${isGroen
-          ? 'bg-green-950 border-green-700 text-green-300 hover:bg-green-900'
-          : 'bg-blue-950 border-blue-700 text-blue-300 hover:bg-blue-900'
-        }`}
-    >
-      {/* Toggle pill */}
-      <span className={`relative inline-flex h-5 w-9 rounded-full transition-colors
-        ${isGroen ? 'bg-green-500' : 'bg-blue-500'}`}>
-        <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform
-          ${isGroen ? 'translate-x-4' : 'translate-x-0'}`} />
-      </span>
-      {bezig ? '…' : isGroen ? 'Groen' : 'Handel'}
-    </button>
-  );
-}
-
-function FlowCard({ icon, label, value, sub, kleur, badge }) {
-  return (
-    <div className="bg-gray-700 rounded-xl p-3 text-center">
-      <p className="text-gray-500 text-xs mb-1">{icon} {label}</p>
-      <p className={`text-xl font-bold ${kleur}`}>{value}</p>
-      <p className="text-gray-500 text-xs mt-0.5">{sub}</p>
-      {badge && <p className="text-gray-600 text-xs mt-0.5">{badge}</p>}
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <ZonPrognose zon={zon} />
+      {!zon && <p className="text-gray-500 text-sm text-center py-4">Geen zonneprognose beschikbaar</p>}
     </div>
   );
 }
@@ -925,392 +859,3 @@ function DagView({ data, selectedDag, setSelectedDag }) {
   );
 }
 
-function cumulatief(data) {
-  let som = 0;
-  return data.map(d => ({ datum: d.datum, cumulatief: +(som += parseFloat(d.winst_euro || 0)).toFixed(2) }));
-}
-
-// Groepeer dagdata per maandnaam (nl), sommeer winst_euro
-function maandActueel(data) {
-  const result = {};
-  for (const d of data) {
-    const key = MAAND_NAMEN[new Date(d.datum).getMonth()];
-    result[key] = (result[key] || 0) + parseFloat(d.winst_euro || 0);
-  }
-  // Rond af op 2 decimalen
-  for (const k in result) result[k] = +result[k].toFixed(2);
-  return result;
-}
-
-// ── TenneT Onbalans Markt ──────────────────────────────────────────────────
-const SPIKE_UP_DREMPEL   = 350; // €/MWh — boven dit = echt interessant (duidelijk boven EPEX+belasting)
-const SPIKE_DOWN_DREMPEL = 0;   // €/MWh — onder dit (negatief) = interessant om te laden
-
-// ESS setpunt waarden (gedeeld door TennetOnbalans + EssSetpuntControle)
-const ESS_LADEN_WATT    =  9000; // +9 kW van net halen (gemeten max: 9.7 kW)
-const ESS_ONTLADEN_WATT = -9000; // -9 kW naar net sturen
-const ESS_AUTO_WATT     =    50; // Victron ESS standaard
-
-function TennetOnbalans() {
-  const [data,        setData]        = useState(null);
-  const [live,        setLive]        = useState(null);
-  const [loading,     setLoading]     = useState(true);
-  const [liveLoading, setLiveLoading] = useState(true);
-  const [fout,        setFout]        = useState(null);
-  const [cmdBezig,    setCmdBezig]    = useState(false);
-  const [cmdBevestig, setCmdBevestig] = useState(null);
-
-  async function laden() {
-    setLoading(true);
-    try {
-      const res  = await fetch(`/api/tennet?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success) setData(json);
-      else setFout(json.bericht || json.error || 'Geen data');
-    } catch (e) { setFout(e.message); }
-    setLoading(false);
-  }
-
-  async function stuurSpikeCommando(watt, label, reden) {
-    setCmdBezig(true);
-    setCmdBevestig(null);
-    try {
-      const res  = await fetch(`/api/stuur?secret=Nummer14!`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ watt, reden, bron: 'onbalans-spike' }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setCmdBevestig(`✓ ${label} gestuurd — Cerbo past toe binnen ~30 s`);
-        setTimeout(() => setCmdBevestig(null), 6000);
-      }
-    } catch {}
-    setCmdBezig(false);
-  }
-
-  async function ladenLive() {
-    setLiveLoading(true);
-    try {
-      const res  = await fetch(`/api/tennet?secret=Nummer14!&live=true&t=${Date.now()}`, { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success) setLive(json);
-    } catch {}
-    setLiveLoading(false);
-  }
-
-  useEffect(() => {
-    laden();
-    ladenLive();
-    const iv = setInterval(ladenLive, 30 * 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  const stateBarKleur = (state) => {
-    if (state === 1)  return '#f87171';
-    if (state === -1) return '#60a5fa';
-    if (state === 2)  return '#fb923c';
-    return '#4b5563';
-  };
-
-  // Is het huidige moment een uitschieter?
-  const lv           = live?.laatste;
-  const isSpike      = lv && (lv.midPrijs >= SPIKE_UP_DREMPEL || lv.midPrijs <= SPIKE_DOWN_DREMPEL);
-  const spikeRichting = lv?.midPrijs >= SPIKE_UP_DREMPEL ? 'up' : lv?.midPrijs <= SPIKE_DOWN_DREMPEL ? 'down' : null;
-
-  return (
-    <div className="bg-gray-800 rounded-xl p-5 mb-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="font-semibold text-gray-200">⚡ Onbalans Markt (TenneT)</h2>
-        <button onClick={laden} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">↻ verversen</button>
-      </div>
-
-      {/* ── Live indicator ── */}
-      {isSpike ? (
-        // UITSCHIETER — groot en opvallend
-        <div className={`rounded-lg px-5 py-4 mb-4 border-2 ${
-          spikeRichting === 'up'
-            ? 'bg-red-950 border-red-500 animate-pulse'
-            : 'bg-blue-950 border-blue-500 animate-pulse'
-        }`}>
-          <p className="text-xs font-semibold tracking-widest uppercase mb-1 text-yellow-400">
-            🚨 Onbalans uitschieter
-          </p>
-          <p className={`text-2xl font-bold ${spikeRichting === 'up' ? 'text-red-300' : 'text-blue-300'}`}>
-            {spikeRichting === 'up'
-              ? `↑ ONTLADEN — €${lv.midPrijs}/MWh`
-              : `↓ LADEN — €${lv.midPrijs}/MWh (negatief)`}
-          </p>
-          <p className="text-gray-300 text-sm mt-1">
-            {spikeRichting === 'up'
-              ? `Prijs boven €${SPIKE_UP_DREMPEL}/MWh — nu ontladen levert veel meer op dan EPEX`
-              : `Prijs onder €${SPIKE_DOWN_DREMPEL}/MWh — nu laden kost niets of levert op`}
-          </p>
-          <p className="text-gray-500 text-xs mt-2">{lv.t} UTC · aFRR↑ {lv.afrrIn} MW / aFRR↓ {lv.afrrOut} MW</p>
-
-          {/* Snelknop — nog niet actief */}
-          <div className="mt-3">
-            <span className="text-xs text-yellow-600 italic">
-              ⚠️ Automatisch handelen nog niet actief — eerst Node-RED op Cerbo GX instellen
-            </span>
-          </div>
-        </div>
-      ) : (
-        // Rustig — kleine neutrale balk
-        <div className="rounded-lg px-4 py-2 mb-4 bg-gray-700 border border-gray-600 flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-gray-500 inline-block"/>
-            <p className="text-gray-400 text-sm">
-              {liveLoading ? 'Live laden...' : lv
-                ? `Onbalans rustig — €${lv.midPrijs}/MWh · aFRR↑ ${lv.afrrIn} / aFRR↓ ${lv.afrrOut} MW`
-                : 'Geen live data'}
-            </p>
-          </div>
-          {lv && <p className="text-gray-600 text-xs ml-auto">{lv.t} UTC · elke 30s · alert bij &gt;€{SPIKE_UP_DREMPEL} of &lt;€{SPIKE_DOWN_DREMPEL}/MWh</p>}
-        </div>
-      )}
-
-      {/* ── Gisteren settlement ── */}
-      {loading && <p className="text-gray-500 text-sm">Laden...</p>}
-      {fout    && <p className="text-red-400 text-sm">{fout}</p>}
-
-      {data && (
-        <>
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide mb-3">
-            Gisteren ({data.datum}) — settlement resultaat
-          </p>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div className="border border-gray-700 rounded-lg p-3 text-center">
-              <p className="text-red-400 text-xs mb-1">↑ UP periodes</p>
-              <p className="text-white font-bold text-lg">{data.samenvatting.aantalUp}</p>
-              <p className="text-gray-500 text-xs">max €{data.samenvatting.maxUpEurMwh}/MWh</p>
-            </div>
-            <div className="border border-gray-700 rounded-lg p-3 text-center">
-              <p className="text-blue-400 text-xs mb-1">↓ DOWN periodes</p>
-              <p className="text-white font-bold text-lg">{data.samenvatting.aantalDown}</p>
-              <p className="text-gray-500 text-xs">max €{data.samenvatting.maxDownEurMwh}/MWh</p>
-            </div>
-            <div className="border border-gray-700 rounded-lg p-3 text-center">
-              <p className="text-green-400 text-xs mb-1">Sim. spike winst</p>
-              <p className="text-green-400 font-bold text-lg">€{data.samenvatting.simWinstUp.toFixed(2)}</p>
-              <p className="text-gray-500 text-xs">{data.samenvatting.kwhPerPtu} kWh/PTU</p>
-            </div>
-            <div className="border border-gray-700 rounded-lg p-3 text-center">
-              <p className="text-emerald-400 text-xs mb-1">Sim. totaal dag</p>
-              <p className="text-emerald-400 font-bold text-lg">€{data.samenvatting.simTotaal.toFixed(2)}</p>
-              <p className="text-gray-500 text-xs">UP + DOWN</p>
-            </div>
-          </div>
-
-          <p className="text-gray-600 text-xs mb-2">Settlement prijzen per PTU (15 min) — rood=UP, blauw=DOWN</p>
-          <ResponsiveContainer width="100%" height={70}>
-            <BarChart data={data.grafiek} barCategoryGap={1} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <Bar dataKey="shortageEurMwh" radius={0}>
-                {data.grafiek.map((p, i) => (
-                  <Cell key={i} fill={stateBarKleur(p.state)} />
-                ))}
-              </Bar>
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const p = payload[0]?.payload;
-                  return (
-                    <div className="bg-gray-900 text-xs text-gray-200 p-2 rounded border border-gray-700">
-                      <p className="font-medium">{p.t}</p>
-                      <p>{p.state === 1 ? '↑ UP' : p.state === -1 ? '↓ DOWN' : 'Neutraal'}</p>
-                      <p>Shortage: €{p.shortageEurMwh}/MWh</p>
-                      <p>Surplus:  €{p.surplusEurMwh}/MWh</p>
-                    </div>
-                  );
-                }}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── ESS Grid Setpunt Bediening ─────────────────────────────────────────────
-// Stuurt een grid-setpunt commando naar de DB.
-// Node-RED op de Cerbo GX pollt /api/commando elke 30s en past het toe via MQTT:
-//   Topic:   W/{portalId}/settings/0/Settings/CGwacs/AcPowerSetPoint
-//   Payload: {"value": <watt>}
-//
-// Positief watt = importeren van net (batterij opladen)
-// Negatief watt = exporteren naar net (batterij ontladen)
-// 50            = ESS auto-modus (Victron standaard)
-
-function EssSetpuntControle() {
-  const [commando,     setCommando]    = useState(null);
-  const [loading,      setLoading]     = useState(true);
-  const [bezig,        setBezig]       = useState(false);
-  const [toggleBezig,  setToggleBezig] = useState(false);
-  const [controleAan,  setControleAan] = useState(false);
-  const [bevestiging,  setBevestiging] = useState(null);
-  const [fout,         setFout]        = useState(null);
-
-  async function haalStatus() {
-    setLoading(true);
-    try {
-      const [cmdRes, ctrlRes] = await Promise.all([
-        fetch(`/api/stuur?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' }),
-        fetch(`/api/controle?secret=Nummer14!&t=${Date.now()}`, { cache: 'no-store' }),
-      ]);
-      const cmd  = await cmdRes.json();
-      const ctrl = await ctrlRes.json();
-      if (cmd.success)  setCommando(cmd.commando);
-      if (ctrl.success) setControleAan(ctrl.controle_actief);
-    } catch {}
-    setLoading(false);
-  }
-
-  async function toggleControle() {
-    setToggleBezig(true);
-    setFout(null);
-    try {
-      const res  = await fetch(`/api/controle?secret=Nummer14!`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ actief: !controleAan }),
-      });
-      const json = await res.json();
-      if (json.success) setControleAan(json.controle_actief);
-    } catch (e) { setFout(e.message); }
-    setToggleBezig(false);
-  }
-
-  async function stuurHandmatig(watt, label, reden) {
-    setBezig(true);
-    setFout(null);
-    try {
-      const res  = await fetch(`/api/stuur?secret=Nummer14!`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ watt, reden, bron: 'handmatig' }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setCommando(json.commando);
-        setBevestiging(label);
-        setTimeout(() => setBevestiging(null), 4000);
-      } else { setFout(json.error || 'Fout'); }
-    } catch (e) { setFout(e.message); }
-    setBezig(false);
-  }
-
-  useEffect(() => { haalStatus(); }, []);
-
-  const huidigWatt = commando?.watt ?? null;
-  const isLaden    = huidigWatt != null && huidigWatt >= 1000;
-  const isOntladen = huidigWatt != null && huidigWatt <= -1000;
-  const tijdLabel  = commando?.aangemaakt
-    ? new Date(commando.aangemaakt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
-    : null;
-
-  return (
-    <div className="bg-gray-800 rounded-xl p-5 mb-6">
-
-      {/* Header + toggle */}
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="font-semibold text-gray-200">🎛️ ESS Batterijbesturing</h2>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400">Auto-besturing</span>
-          <button
-            onClick={toggleControle}
-            disabled={toggleBezig}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
-              controleAan ? 'bg-green-500' : 'bg-gray-600'
-            }`}
-          >
-            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
-              controleAan ? 'translate-x-6' : 'translate-x-1'
-            }`} />
-          </button>
-          <span className={`text-xs font-semibold ${controleAan ? 'text-green-400' : 'text-gray-500'}`}>
-            {controleAan ? 'AAN' : 'UIT'}
-          </span>
-        </div>
-      </div>
-
-      {/* Status banner */}
-      {controleAan ? (
-        <div className="rounded-lg border border-green-700 bg-green-950 px-4 py-3 mb-4">
-          <p className="text-green-300 text-sm font-semibold">✓ Algoritme stuurt batterij aan</p>
-          <p className="text-green-700 text-xs mt-0.5">
-            Elke aanroep van het algoritme schrijft automatisch het correcte setpunt.
-            Node-RED past dit toe via MQTT op de Cerbo GX.
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-gray-700 bg-gray-750 px-4 py-3 mb-4">
-          <p className="text-gray-400 text-sm font-semibold">Auto-besturing uitgeschakeld</p>
-          <p className="text-gray-600 text-xs mt-0.5">
-            Cerbo GX beheert de batterij zelf (ESS standaard). Gebruik de knoppen hieronder voor handmatige controle.
-          </p>
-        </div>
-      )}
-
-      {/* Huidig actief commando */}
-      <div className="border border-gray-700 rounded-lg px-4 py-3 mb-4 flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <p className="text-xs text-gray-500 mb-0.5">Huidig setpunt (DB)</p>
-          <p className={`text-lg font-bold ${isLaden ? 'text-blue-400' : isOntladen ? 'text-orange-400' : 'text-green-400'}`}>
-            {loading ? '…' : huidigWatt == null ? '—'
-              : isLaden    ? `↓ LADEN  +${(huidigWatt/1000).toFixed(0)} kW`
-              : isOntladen ? `↑ ONTLADEN  ${(huidigWatt/1000).toFixed(0)} kW`
-              : controleAan ? `⏸ WACHTEN  (algoritme neutraal)` : `⚡ AUTO  (${huidigWatt} W)`}
-          </p>
-        </div>
-        <div className="text-right text-xs text-gray-500">
-          {tijdLabel && <p>{tijdLabel} · {commando?.bron ?? '—'}</p>}
-          {commando?.reden && <p className="text-gray-600 italic truncate max-w-[200px]">{commando.reden}</p>}
-          {commando?.uitgevoerd
-            ? <p className="text-green-600">✓ ontvangen door Cerbo</p>
-            : commando && <p className="text-yellow-600">⏳ wacht op Cerbo GX</p>}
-        </div>
-      </div>
-
-      {/* Handmatige knoppen — altijd beschikbaar als override */}
-      <p className="text-xs text-gray-500 mb-2">
-        {controleAan ? 'Handmatige override (overschrijft algoritme tijdelijk):' : 'Handmatige besturing:'}
-      </p>
-      <div className="grid grid-cols-3 gap-3 mb-3">
-        <button
-          onClick={() => stuurHandmatig(ESS_LADEN_WATT, 'LADEN +9 kW', 'Handmatig: laden van net')}
-          disabled={bezig}
-          className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-300 hover:border-blue-500 hover:text-blue-300 transition-all disabled:opacity-50"
-        >
-          ↓ LADEN
-          <span className="block text-xs font-normal mt-0.5 opacity-70">+9 kW van net</span>
-        </button>
-        <button
-          onClick={() => stuurHandmatig(ESS_AUTO_WATT, 'AUTO', 'Handmatig: ESS auto')}
-          disabled={bezig}
-          className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-300 hover:border-green-500 hover:text-green-300 transition-all disabled:opacity-50"
-        >
-          ⚡ AUTO
-          <span className="block text-xs font-normal mt-0.5 opacity-70">ESS beslist</span>
-        </button>
-        <button
-          onClick={() => stuurHandmatig(ESS_ONTLADEN_WATT, 'ONTLADEN −9 kW', 'Handmatig: ontladen naar net')}
-          disabled={bezig}
-          className="rounded-lg px-3 py-3 text-sm font-semibold border-2 bg-gray-700 border-gray-600 text-gray-300 hover:border-orange-500 hover:text-orange-300 transition-all disabled:opacity-50"
-        >
-          ↑ ONTLADEN
-          <span className="block text-xs font-normal mt-0.5 opacity-70">−9 kW naar net</span>
-        </button>
-      </div>
-
-      {bevestiging && <p className="text-green-400 text-sm text-center">✓ {bevestiging} gestuurd — Node-RED past toe binnen ~30 s</p>}
-      {fout        && <p className="text-red-400  text-sm text-center">{fout}</p>}
-
-      <p className="text-gray-600 text-xs mt-3 text-center">
-        Node-RED: <code className="text-gray-500">GET /api/commando</code> → <code className="text-gray-500">W/934962/vebus/276/Hub4/L1/AcPowerSetpoint</code>
-      </p>
-    </div>
-  );
-}
-
