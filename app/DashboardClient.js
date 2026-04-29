@@ -92,7 +92,7 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        <ImportExportVergelijk data={data} />
+        <ImportExportWidget data={data} />
 
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <h2 className="font-semibold text-gray-200 mb-4">Recente dagen</h2>
@@ -605,8 +605,58 @@ const P1_2025 = [
   { maand: 'dec', imp: 651, exp: 64  },
 ];
 
-function ImportExportVergelijk({ data }) {
-  // Aggregeer 2026 data per maand uit energie_data
+function ImportExportWidget({ data }) {
+  const [view, setView] = useState('jaar');
+
+  // Beschikbare maanden uit de data (YYYY-MM), gesorteerd
+  const beschikbareMaanden = [...new Set(data.map(d => d.datum.slice(0, 7)))].sort();
+  const defaultMaand = beschikbareMaanden.at(-1) ?? new Date().toISOString().slice(0, 7);
+  const [selectedMaand, setSelectedMaand] = useState(defaultMaand);
+  const [selectedDag,   setSelectedDag]   = useState(data.at(-1)?.datum ?? null);
+
+  const maandIdx = beschikbareMaanden.indexOf(selectedMaand);
+
+  function openDag(datum) { setSelectedDag(datum); setView('dag'); }
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="font-semibold text-gray-200">📊 Import &amp; Export</h2>
+        <div className="flex gap-1">
+          {['jaar', 'maand', 'dag'].map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors
+                ${view === v ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'jaar' && <JaarView data={data} />}
+      {view === 'maand' && (
+        <MaandView
+          data={data}
+          beschikbareMaanden={beschikbareMaanden}
+          selectedMaand={selectedMaand}
+          setSelectedMaand={setSelectedMaand}
+          maandIdx={maandIdx}
+          onDagClick={openDag}
+        />
+      )}
+      {view === 'dag' && (
+        <DagView
+          data={data}
+          selectedDag={selectedDag}
+          setSelectedDag={setSelectedDag}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Jaaroverzicht: maandelijkse import/export 2025 vs 2026 ──────────────────
+function JaarView({ data }) {
   const act = {};
   for (const d of data) {
     const key = MAAND_NAMEN[new Date(d.datum).getMonth()];
@@ -614,50 +664,42 @@ function ImportExportVergelijk({ data }) {
     act[key].imp += parseFloat(d.net_import_kwh || 0);
     act[key].exp += parseFloat(d.net_export_kwh || 0);
   }
-
   const chartData = P1_2025.map(m => ({
-    maand:     m.maand,
-    imp25:     m.imp,
-    exp25:     m.exp,
-    imp26:     act[m.maand] != null ? +act[m.maand].imp.toFixed(0) : null,
-    exp26:     act[m.maand] != null ? +act[m.maand].exp.toFixed(0) : null,
+    maand: m.maand, imp25: m.imp, exp25: m.exp,
+    imp26: act[m.maand] ? +act[m.maand].imp.toFixed(0) : null,
+    exp26: act[m.maand] ? +act[m.maand].exp.toFixed(0) : null,
   }));
-
-  // Samenvattingscijfers — alleen over maanden met 2026-data
   const maanden26 = P1_2025.filter(m => act[m.maand]);
-  const totImp25  = maanden26.reduce((s, m) => s + m.imp, 0);
-  const totExp25  = maanden26.reduce((s, m) => s + m.exp, 0);
-  const totImp26  = maanden26.reduce((s, m) => s + (act[m.maand]?.imp || 0), 0);
-  const totExp26  = maanden26.reduce((s, m) => s + (act[m.maand]?.exp || 0), 0);
-  const impReductie = totImp25 > 0 ? Math.round((1 - totImp26 / totImp25) * 100) : null;
-  const expReductie = totExp25 > 0 ? Math.round((1 - totExp26 / totExp25) * 100) : null;
-  const heeft26     = maanden26.length > 0;
+  const totImp25 = maanden26.reduce((s, m) => s + m.imp, 0);
+  const totExp25 = maanden26.reduce((s, m) => s + m.exp, 0);
+  const totImp26 = maanden26.reduce((s, m) => s + (act[m.maand]?.imp || 0), 0);
+  const totExp26 = maanden26.reduce((s, m) => s + (act[m.maand]?.exp || 0), 0);
+  const impRed = totImp25 > 0 ? Math.round((1 - totImp26 / totImp25) * 100) : null;
+  const expRed = totExp25 > 0 ? Math.round((1 - totExp26 / totExp25) * 100) : null;
+  const heeft26 = maanden26.length > 0;
 
-  const tooltipContent = ({ active, payload }) => {
+  const tip = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
-    const m = payload[0]?.payload;
+    const m = payload[0].payload;
     return (
-      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 190 }}>
-        <p style={{ fontWeight: 700, marginBottom: 8, fontSize: 13 }}>{m.maand}</p>
-        <p style={{ color: '#9CA3AF' }}>Import 2025: <strong style={{ color: '#94A3B8' }}>{m.imp25} kWh</strong></p>
+      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 180 }}>
+        <p style={{ fontWeight: 700, marginBottom: 6 }}>{m.maand}</p>
+        <p style={{ color: '#94A3B8' }}>Import 2025: <strong>{m.imp25} kWh</strong></p>
         {m.imp26 != null && <p style={{ color: '#60A5FA' }}>Import 2026: <strong>{m.imp26} kWh</strong>
           {m.imp25 > 0 && <span style={{ color: '#34D399', marginLeft: 6 }}>−{Math.round((1 - m.imp26/m.imp25)*100)}%</span>}
         </p>}
-        <p style={{ color: '#9CA3AF', marginTop: 6 }}>Export 2025: <strong style={{ color: '#94A3B8' }}>{m.exp25} kWh</strong></p>
+        <p style={{ color: '#94A3B8', marginTop: 4 }}>Export 2025: <strong>{m.exp25} kWh</strong></p>
         {m.exp26 != null && <p style={{ color: '#34D399' }}>Export 2026: <strong>{m.exp26} kWh</strong>
-          {m.exp25 > 0 && <span style={{ color: m.exp26 > m.exp25 ? '#34D399' : '#F59E0B', marginLeft: 6 }}>{m.exp26 >= m.exp25 ? '+' : '−'}{Math.abs(Math.round((1 - m.exp26/m.exp25)*100))}%</span>}
+          {m.exp25 > 0 && <span style={{ color: '#F59E0B', marginLeft: 6 }}>{m.exp26 >= m.exp25 ? '+' : '−'}{Math.abs(Math.round((1 - m.exp26/m.exp25)*100))}%</span>}
         </p>}
       </div>
     );
   };
 
   return (
-    <div className="bg-gray-800 rounded-xl p-5 mb-6">
-      <h2 className="font-semibold text-gray-200 mb-1">📊 Import &amp; Export vergelijk — 2025 vs 2026</h2>
-      <p className="text-xs text-gray-500 mb-4">Wat doet de batterij met je inkoop en teruglevering?</p>
-
-      {/* Samenvattingskaartjes */}
-      {heeft26 && (
+    <>
+      <p className="text-xs text-gray-500 mb-4">Maandtotalen — 2025 (zonder batterij) vs 2026 (met batterij)</p>
+      {heeft26 ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           <div className="bg-gray-700 rounded-lg p-3 text-center">
             <p className="text-xs text-gray-400 mb-1">Import 2025</p>
@@ -667,7 +709,7 @@ function ImportExportVergelijk({ data }) {
           <div className="bg-gray-700 rounded-lg p-3 text-center">
             <p className="text-xs text-gray-400 mb-1">Import 2026</p>
             <p className="text-lg font-bold text-blue-400">{Math.round(totImp26)} kWh</p>
-            {impReductie != null && <p className="text-xs text-emerald-400 mt-0.5">−{impReductie}% minder van net</p>}
+            {impRed != null && <p className="text-xs text-emerald-400 mt-0.5">−{impRed}% minder van net</p>}
           </div>
           <div className="bg-gray-700 rounded-lg p-3 text-center">
             <p className="text-xs text-gray-400 mb-1">Export 2025</p>
@@ -677,40 +719,174 @@ function ImportExportVergelijk({ data }) {
           <div className="bg-gray-700 rounded-lg p-3 text-center">
             <p className="text-xs text-gray-400 mb-1">Export 2026</p>
             <p className="text-lg font-bold text-emerald-400">{Math.round(totExp26)} kWh</p>
-            {expReductie != null && <p className="text-xs text-gray-400 mt-0.5">{expReductie > 0 ? `−${expReductie}%` : `+${Math.abs(expReductie)}%`} vs 2025</p>}
+            {expRed != null && <p className="text-xs text-gray-400 mt-0.5">{expRed > 0 ? `−${expRed}%` : `+${Math.abs(expRed)}%`} vs 2025</p>}
           </div>
         </div>
+      ) : (
+        <p className="text-xs text-yellow-500 mb-4">⚠️ Nog geen 2026-data — wordt gevuld na backfill op 1 mei</p>
       )}
-
-      {!heeft26 && (
-        <p className="text-xs text-yellow-500 mb-4">⚠️ Nog geen 2026-data beschikbaar — wordt gevuld na backfill op 1 mei</p>
-      )}
-
-      {/* Legenda */}
       <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-400">
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-slate-500"/>Import 2025</span>
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500"/>Import 2026</span>
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-gray-400"/>Export 2025</span>
         <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>Export 2026</span>
       </div>
-
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={230}>
         <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="15%" barGap={2}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
           <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-          <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `${v}`} width={36} unit=" kWh" />
-          <Tooltip content={tooltipContent} />
-          <Bar dataKey="imp25" name="Import 2025"  radius={[2,2,0,0]} fill="#64748B" isAnimationActive={false} />
-          <Bar dataKey="imp26" name="Import 2026"  radius={[2,2,0,0]} fill="#3B82F6" isAnimationActive={false} />
-          <Bar dataKey="exp25" name="Export 2025"  radius={[2,2,0,0]} fill="#9CA3AF" isAnimationActive={false} />
-          <Bar dataKey="exp26" name="Export 2026"  radius={[2,2,0,0]} fill="#10B981" isAnimationActive={false} />
+          <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} width={36} unit=" kWh" />
+          <Tooltip content={tip} />
+          <Bar dataKey="imp25" radius={[2,2,0,0]} fill="#64748B" isAnimationActive={false} />
+          <Bar dataKey="imp26" radius={[2,2,0,0]} fill="#3B82F6" isAnimationActive={false} />
+          <Bar dataKey="exp25" radius={[2,2,0,0]} fill="#9CA3AF" isAnimationActive={false} />
+          <Bar dataKey="exp26" radius={[2,2,0,0]} fill="#10B981" isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
+      <p className="text-xs text-gray-600 mt-2">2025 = P1 slimme meter · 2026 = Victron VRM · Import = van net · Export = teruggeleverd</p>
+    </>
+  );
+}
 
-      <p className="text-xs text-gray-600 mt-2">
-        2025 = P1 slimme meter · 2026 = Victron VRM data · Import = van net gekocht · Export = teruggeleverd
-      </p>
-    </div>
+// ── Maandoverzicht: dagelijkse import/export voor één maand ──────────────────
+function MaandView({ data, beschikbareMaanden, selectedMaand, setSelectedMaand, maandIdx, onDagClick }) {
+  const maandData = data
+    .filter(d => d.datum.startsWith(selectedMaand))
+    .map(d => ({
+      dag:  parseInt(d.datum.slice(8), 10),
+      datum: d.datum,
+      imp:  +parseFloat(d.net_import_kwh || 0).toFixed(2),
+      exp:  +parseFloat(d.net_export_kwh || 0).toFixed(2),
+      zon:  +parseFloat(d.solar_yield_kwh || 0).toFixed(2),
+      winst: +parseFloat(d.winst_euro || 0).toFixed(2),
+    }));
+
+  const [jaar, maandNr] = selectedMaand.split('-');
+  const maandLabel = `${MAAND_NAMEN[parseInt(maandNr, 10) - 1]} ${jaar}`;
+  const totImp = maandData.reduce((s, d) => s + d.imp, 0).toFixed(1);
+  const totExp = maandData.reduce((s, d) => s + d.exp, 0).toFixed(1);
+
+  const tip = ({ active, payload }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB' }}>
+        <p style={{ fontWeight: 700, marginBottom: 6 }}>{d.datum}</p>
+        <p style={{ color: '#60A5FA' }}>Import: <strong>{d.imp} kWh</strong></p>
+        <p style={{ color: '#10B981' }}>Export: <strong>{d.exp} kWh</strong></p>
+        <p style={{ color: '#FBBF24' }}>Zon: <strong>{d.zon} kWh</strong></p>
+        <p style={{ color: '#34D399', marginTop: 4 }}>Winst: <strong>€{d.winst}</strong></p>
+        <p style={{ color: '#6B7280', marginTop: 4, fontSize: 11 }}>Klik voor dagdetail →</p>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Navigatie */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={() => setSelectedMaand(beschikbareMaanden[maandIdx - 1])} disabled={maandIdx <= 0}
+          className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">‹</button>
+        <div className="text-center">
+          <p className="font-semibold text-gray-200">{maandLabel}</p>
+          <p className="text-xs text-gray-500">{maandData.length} dagen · imp {totImp} kWh · exp {totExp} kWh</p>
+        </div>
+        <button onClick={() => setSelectedMaand(beschikbareMaanden[maandIdx + 1])} disabled={maandIdx >= beschikbareMaanden.length - 1}
+          className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">›</button>
+      </div>
+
+      {maandData.length === 0 ? (
+        <p className="text-gray-500 text-sm text-center py-8">Geen data voor {maandLabel}</p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-400">
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500"/>Import</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>Export</span>
+            <span className="text-gray-600 ml-auto">Klik op een dag voor detail</span>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={maandData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="20%" barGap={2}
+              onClick={e => e?.activePayload?.[0] && onDagClick(e.activePayload[0].payload.datum)}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis dataKey="dag" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `${v}`} />
+              <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} width={36} unit=" kWh" />
+              <Tooltip content={tip} />
+              <Bar dataKey="imp" radius={[2,2,0,0]} fill="#3B82F6" isAnimationActive={false} cursor="pointer" />
+              <Bar dataKey="exp" radius={[2,2,0,0]} fill="#10B981" isAnimationActive={false} cursor="pointer" />
+            </BarChart>
+          </ResponsiveContainer>
+        </>
+      )}
+    </>
+  );
+}
+
+// ── Dagdetail: KPI-kaartjes voor één dag ─────────────────────────────────────
+function DagView({ data, selectedDag, setSelectedDag }) {
+  const gesorteerd = [...data].sort((a, b) => a.datum.localeCompare(b.datum));
+  const idx = gesorteerd.findIndex(d => d.datum === selectedDag);
+  const dag = idx >= 0 ? gesorteerd[idx] : null;
+
+  function nav(delta) {
+    const next = gesorteerd[idx + delta];
+    if (next) setSelectedDag(next.datum);
+  }
+
+  const fmt = iso => new Date(iso).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <>
+      {/* Navigatie */}
+      <div className="flex items-center justify-between mb-5">
+        <button onClick={() => nav(-1)} disabled={idx <= 0}
+          className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">‹</button>
+        <p className="font-semibold text-gray-200 capitalize">{dag ? fmt(dag.datum) : '—'}</p>
+        <button onClick={() => nav(1)} disabled={idx >= gesorteerd.length - 1}
+          className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">›</button>
+      </div>
+
+      {!dag ? (
+        <p className="text-gray-500 text-sm text-center py-8">Geen data beschikbaar voor deze dag</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-gray-700 rounded-xl p-4 text-center">
+            <p className="text-xs text-amber-400 mb-1">☀️ Zonproductie</p>
+            <p className="text-2xl font-bold text-amber-300">{parseFloat(dag.solar_yield_kwh || 0).toFixed(1)}</p>
+            <p className="text-xs text-gray-500 mt-0.5">kWh</p>
+          </div>
+          <div className="bg-gray-700 rounded-xl p-4 text-center">
+            <p className="text-xs text-blue-400 mb-1">⬇️ Import</p>
+            <p className="text-2xl font-bold text-blue-300">{parseFloat(dag.net_import_kwh || 0).toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-0.5">kWh van net</p>
+          </div>
+          <div className="bg-gray-700 rounded-xl p-4 text-center">
+            <p className="text-xs text-emerald-400 mb-1">⬆️ Export</p>
+            <p className="text-2xl font-bold text-emerald-300">{parseFloat(dag.net_export_kwh || 0).toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-0.5">kWh naar net</p>
+          </div>
+          <div className="bg-gray-700 rounded-xl p-4 text-center">
+            <p className="text-xs text-green-400 mb-1">💶 Batterijwinst</p>
+            <p className="text-2xl font-bold text-green-300">€{parseFloat(dag.winst_euro || 0).toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-0.5">die dag</p>
+          </div>
+          {dag.verbruik_kwh != null && (
+            <div className="bg-gray-700 rounded-xl p-4 text-center sm:col-span-2">
+              <p className="text-xs text-gray-400 mb-1">🏠 Totaalverbruik</p>
+              <p className="text-2xl font-bold text-white">{parseFloat(dag.verbruik_kwh).toFixed(2)}</p>
+              <p className="text-xs text-gray-500 mt-0.5">kWh</p>
+            </div>
+          )}
+          {dag.bat_meerwaarde != null && (
+            <div className="bg-gray-700 rounded-xl p-4 text-center sm:col-span-2">
+              <p className="text-xs text-purple-400 mb-1">🔋 Batterij meerwaarde</p>
+              <p className="text-2xl font-bold text-purple-300">€{parseFloat(dag.bat_meerwaarde).toFixed(2)}</p>
+              <p className="text-xs text-gray-500 mt-0.5">t.o.v. zonder batterij</p>
+            </div>
+          )}
+        </div>
+      )}
+      <p className="text-xs text-gray-600 mt-4">Gebruik ‹ › om door de dagen te navigeren</p>
+    </>
   );
 }
 
