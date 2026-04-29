@@ -92,7 +92,7 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        <SeizoenProjectie maandActueel={maandActueel(data)} />
+        <ImportExportVergelijk data={data} />
 
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <h2 className="font-semibold text-gray-200 mb-4">Recente dagen</h2>
@@ -589,109 +589,127 @@ function RefreshButton() {
   );
 }
 
-function SeizoenProjectie({ maandActueel = {} }) {
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [fout,    setFout]    = useState(null);
+// P1 slimme meter data 2025 (zonder batterij)
+const P1_2025 = [
+  { maand: 'jan', imp: 810, exp: 76  },
+  { maand: 'feb', imp: 650, exp: 224 },
+  { maand: 'mrt', imp: 325, exp: 692 },
+  { maand: 'apr', imp: 201, exp: 713 },
+  { maand: 'mei', imp: 150, exp: 744 },
+  { maand: 'jun', imp: 126, exp: 615 },
+  { maand: 'jul', imp: 124, exp: 574 },
+  { maand: 'aug', imp: 114, exp: 698 },
+  { maand: 'sep', imp: 166, exp: 534 },
+  { maand: 'okt', imp: 284, exp: 283 },
+  { maand: 'nov', imp: 474, exp: 147 },
+  { maand: 'dec', imp: 651, exp: 64  },
+];
 
-  useEffect(() => {
-    fetch('/api/projectie?secret=Nummer14!')
-      .then(r => r.json())
-      .then(json => {
-        if (json.success) setData(json);
-        else setFout(json.error || 'Geen data');
-      })
-      .catch(e => setFout(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+function ImportExportVergelijk({ data }) {
+  // Aggregeer 2026 data per maand uit energie_data
+  const act = {};
+  for (const d of data) {
+    const key = MAAND_NAMEN[new Date(d.datum).getMonth()];
+    if (!act[key]) act[key] = { imp: 0, exp: 0 };
+    act[key].imp += parseFloat(d.net_import_kwh || 0);
+    act[key].exp += parseFloat(d.net_export_kwh || 0);
+  }
 
-  const heeftActueel = Object.keys(maandActueel).length > 0;
-  const merged = (data?.maanden || []).map(m => ({
-    ...m,
-    actueel: maandActueel[m.maand] ?? null,
+  const chartData = P1_2025.map(m => ({
+    maand:     m.maand,
+    imp25:     m.imp,
+    exp25:     m.exp,
+    imp26:     act[m.maand] != null ? +act[m.maand].imp.toFixed(0) : null,
+    exp26:     act[m.maand] != null ? +act[m.maand].exp.toFixed(0) : null,
   }));
 
-  const totaalKosten   = merged.reduce((s, m) => s + (m.energiekosten || 0), 0);
-  const totaalBespaard = data?.jaarTotaal ?? 0;
-  const nettoRekening  = totaalKosten - totaalBespaard;
+  // Samenvattingscijfers — alleen over maanden met 2026-data
+  const maanden26 = P1_2025.filter(m => act[m.maand]);
+  const totImp25  = maanden26.reduce((s, m) => s + m.imp, 0);
+  const totExp25  = maanden26.reduce((s, m) => s + m.exp, 0);
+  const totImp26  = maanden26.reduce((s, m) => s + (act[m.maand]?.imp || 0), 0);
+  const totExp26  = maanden26.reduce((s, m) => s + (act[m.maand]?.exp || 0), 0);
+  const impReductie = totImp25 > 0 ? Math.round((1 - totImp26 / totImp25) * 100) : null;
+  const expReductie = totExp25 > 0 ? Math.round((1 - totExp26 / totExp25) * 100) : null;
+  const heeft26     = maanden26.length > 0;
 
   const tooltipContent = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
     const m = payload[0]?.payload;
     return (
-      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 200 }}>
+      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 190 }}>
         <p style={{ fontWeight: 700, marginBottom: 8, fontSize: 13 }}>{m.maand}</p>
-        <p style={{ color: '#9CA3AF' }}>Stroomkosten: <strong style={{ color: '#D1D5DB' }}>€{m.energiekosten?.toFixed(0)}</strong></p>
-        <p style={{ color: '#34D399' }}>Batterijwinst sim.: <strong>€{m.proj?.toFixed(0) ?? '—'}</strong></p>
-        {m.actueel != null && (
-          <p style={{ color: '#22D3EE' }}>Werkelijk 2026: <strong>€{m.actueel?.toFixed(0)}</strong></p>
-        )}
-        <p style={{ color: '#9CA3AF', borderTop: '1px solid #374151', paddingTop: 6, marginTop: 6 }}>
-          Netto rekening: <strong style={{ color: (m.energiekosten - m.proj) < 0 ? '#34D399' : '#D1D5DB' }}>
-            €{((m.energiekosten || 0) - (m.proj || 0)).toFixed(0)}
-          </strong>
-        </p>
+        <p style={{ color: '#9CA3AF' }}>Import 2025: <strong style={{ color: '#94A3B8' }}>{m.imp25} kWh</strong></p>
+        {m.imp26 != null && <p style={{ color: '#60A5FA' }}>Import 2026: <strong>{m.imp26} kWh</strong>
+          {m.imp25 > 0 && <span style={{ color: '#34D399', marginLeft: 6 }}>−{Math.round((1 - m.imp26/m.imp25)*100)}%</span>}
+        </p>}
+        <p style={{ color: '#9CA3AF', marginTop: 6 }}>Export 2025: <strong style={{ color: '#94A3B8' }}>{m.exp25} kWh</strong></p>
+        {m.exp26 != null && <p style={{ color: '#34D399' }}>Export 2026: <strong>{m.exp26} kWh</strong>
+          {m.exp25 > 0 && <span style={{ color: m.exp26 > m.exp25 ? '#34D399' : '#F59E0B', marginLeft: 6 }}>{m.exp26 >= m.exp25 ? '+' : '−'}{Math.abs(Math.round((1 - m.exp26/m.exp25)*100))}%</span>}
+        </p>}
       </div>
     );
   };
 
   return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <h2 className="font-semibold text-gray-200 mb-1">📊 Import &amp; Export vergelijk — 2025 vs 2026</h2>
+      <p className="text-xs text-gray-500 mb-4">Wat doet de batterij met je inkoop en teruglevering?</p>
 
-      <h2 className="font-semibold text-gray-200 mb-4">📅 Seizoensprojectie 2025 vs. 2026</h2>
-
-      {/* Totalen bovenaan */}
-      {data && (
-        <div className="grid grid-cols-3 gap-3 mb-5">
+      {/* Samenvattingskaartjes */}
+      {heeft26 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Stroomkosten 2025</p>
-            <p className="text-xl font-bold text-gray-200">€{totaalKosten.toFixed(0)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">wat je betaalt</p>
+            <p className="text-xs text-gray-400 mb-1">Import 2025</p>
+            <p className="text-lg font-bold text-slate-300">{Math.round(totImp25)} kWh</p>
+            <p className="text-xs text-gray-500 mt-0.5">dezelfde maanden</p>
           </div>
           <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Batterijwinst sim.</p>
-            <p className="text-xl font-bold text-emerald-400">€{totaalBespaard.toFixed(0)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">wat de batterij doet</p>
+            <p className="text-xs text-gray-400 mb-1">Import 2026</p>
+            <p className="text-lg font-bold text-blue-400">{Math.round(totImp26)} kWh</p>
+            {impReductie != null && <p className="text-xs text-emerald-400 mt-0.5">−{impReductie}% minder van net</p>}
           </div>
           <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Netto rekening</p>
-            <p className={`text-xl font-bold ${nettoRekening < 0 ? 'text-emerald-400' : 'text-gray-200'}`}>
-              €{nettoRekening.toFixed(0)}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">na batterij</p>
+            <p className="text-xs text-gray-400 mb-1">Export 2025</p>
+            <p className="text-lg font-bold text-slate-300">{Math.round(totExp25)} kWh</p>
+            <p className="text-xs text-gray-500 mt-0.5">dezelfde maanden</p>
+          </div>
+          <div className="bg-gray-700 rounded-lg p-3 text-center">
+            <p className="text-xs text-gray-400 mb-1">Export 2026</p>
+            <p className="text-lg font-bold text-emerald-400">{Math.round(totExp26)} kWh</p>
+            {expReductie != null && <p className="text-xs text-gray-400 mt-0.5">{expReductie > 0 ? `−${expReductie}%` : `+${Math.abs(expReductie)}%`} vs 2025</p>}
           </div>
         </div>
       )}
 
+      {!heeft26 && (
+        <p className="text-xs text-yellow-500 mb-4">⚠️ Nog geen 2026-data beschikbaar — wordt gevuld na backfill op 1 mei</p>
+      )}
+
       {/* Legenda */}
       <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-400">
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-gray-500"/>Stroomkosten</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>Batterijwinst simulatie</span>
-        {heeftActueel && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-cyan-400"/>Werkelijk 2026</span>}
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-slate-500"/>Import 2025</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500"/>Import 2026</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-gray-400"/>Export 2025</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>Export 2026</span>
       </div>
 
-      {loading && <p className="text-gray-500 text-sm py-6 text-center">Prijzen ophalen &amp; simuleren… (kan ~10 s duren)</p>}
-      {fout    && <p className="text-red-400 text-sm py-4">{fout}</p>}
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="15%" barGap={2}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+          <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+          <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `${v}`} width={36} unit=" kWh" />
+          <Tooltip content={tooltipContent} />
+          <Bar dataKey="imp25" name="Import 2025"  radius={[2,2,0,0]} fill="#64748B" isAnimationActive={false} />
+          <Bar dataKey="imp26" name="Import 2026"  radius={[2,2,0,0]} fill="#3B82F6" isAnimationActive={false} />
+          <Bar dataKey="exp25" name="Export 2025"  radius={[2,2,0,0]} fill="#9CA3AF" isAnimationActive={false} />
+          <Bar dataKey="exp26" name="Export 2026"  radius={[2,2,0,0]} fill="#10B981" isAnimationActive={false} />
+        </BarChart>
+      </ResponsiveContainer>
 
-      {data && (
-        <>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="20%" barGap={3}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickFormatter={v => `€${v}`} width={46} />
-              <Tooltip content={tooltipContent} />
-              <Bar dataKey="energiekosten" name="Stroomkosten"       radius={[3,3,0,0]} fill="#4B5563" isAnimationActive={false} />
-              <Bar dataKey="proj"          name="Batterijwinst sim." radius={[3,3,0,0]} fill="#10B981" isAnimationActive={false} />
-              <Bar dataKey="actueel"       name="Werkelijk 2026"     radius={[3,3,0,0]} fill="#22D3EE" isAnimationActive={false} />
-            </BarChart>
-          </ResponsiveContainer>
-          <p className="text-xs text-gray-600 mt-2">
-            Stroomkosten = variabele kosten (kWh × spotprijs), excl. vaste kosten netbeheer ≈ €40–50/mnd
-            {data.vanCache ? ' · 📦 uit cache' : ' · 🔄 vers berekend'}
-          </p>
-        </>
-      )}
+      <p className="text-xs text-gray-600 mt-2">
+        2025 = P1 slimme meter · 2026 = Victron VRM data · Import = van net gekocht · Export = teruggeleverd
+      </p>
     </div>
   );
 }
