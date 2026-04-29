@@ -51,7 +51,7 @@ export async function GET(request) {
         { headers: { Authorization: `Bearer ${apiKey}` } }
       ),
       fetch(
-        `https://api.solcast.com.au/rooftop_sites/${resourceId}/estimated_actuals?format=json&hours=24`,
+        `https://api.solcast.com.au/rooftop_sites/${resourceId}/estimated_actuals?format=json&hours=168`,
         { headers: { Authorization: `Bearer ${apiKey}` } }
       ),
     ]);
@@ -98,23 +98,34 @@ export async function GET(request) {
       }
     }
 
-    // Estimated actuals (verleden vandaag)
+    // Estimated actuals (afgelopen 7 dagen) — aggregeer per lokale dag (UTC+2)
     let vandaagGeproduceerdKwh = 0;
+    const dagTotalen = {}; // { 'YYYY-MM-DD': kWh }
+
     for (const p of actuals) {
       const eindUtc  = new Date(p.period_end);
       const beginUtc = new Date(eindUtc.getTime() - 30 * 60000);
-      if (beginUtc.toISOString().split('T')[0] !== vandaag) continue;
-      const kwh  = (p.pv_estimate ?? 0) * 0.5;
-      const watt = (p.pv_estimate ?? 0) * 1000;
-      vandaagGeproduceerdKwh += kwh;
-      if (beginUtc < nu) {
-        const lokaalBegin = new Date(beginUtc.getTime() + 2 * 3600000);
-        const tijdLabel   = lokaalBegin.toISOString().slice(11, 16);
-        const key         = 'vandaag_' + tijdLabel;
-        if (!uurData[key]) uurData[key] = { tijd: tijdLabel, watt: 0, dag: 'vandaag' };
-        uurData[key].watt = watt;
+      const kwh      = (p.pv_estimate ?? 0) * 0.5;
+      const lokaalBegin = new Date(beginUtc.getTime() + 2 * 3600000);
+      const dagLokaal   = lokaalBegin.toISOString().split('T')[0];
+
+      dagTotalen[dagLokaal] = (dagTotalen[dagLokaal] || 0) + kwh;
+
+      if (dagLokaal === vandaag) {
+        vandaagGeproduceerdKwh += kwh;
+        if (beginUtc < nu) {
+          const tijdLabel = lokaalBegin.toISOString().slice(11, 16);
+          const key       = 'vandaag_' + tijdLabel;
+          if (!uurData[key]) uurData[key] = { tijd: tijdLabel, watt: 0, dag: 'vandaag' };
+          uurData[key].watt = (p.pv_estimate ?? 0) * 1000;
+        }
       }
     }
+
+    // Zet dagTotalen om naar gesorteerde array voor vergelijkingsgrafiek
+    const estimatedActualsDagen = Object.entries(dagTotalen)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([datum, kwh]) => ({ datum, kwh: +kwh.toFixed(2) }));
 
     const grafiekData = Object.values(uurData).sort((a, b) => {
       const ord = d => (d === 'vandaag' ? 0 : 1);
@@ -123,12 +134,13 @@ export async function GET(request) {
     });
 
     const resultaat = {
-      vandaagKwh:          +(vandaagGeproduceerdKwh + vandaagKwh).toFixed(2),
+      vandaagKwh:             +(vandaagGeproduceerdKwh + vandaagKwh).toFixed(2),
       vandaagGeproduceerdKwh: vandaagGeproduceerdKwh > 0 ? +vandaagGeproduceerdKwh.toFixed(2) : null,
-      vandaagResterendKwh: +vandaagResterendKwh.toFixed(2),
-      morgenKwh:           +morgenKwh.toFixed(2),
+      vandaagResterendKwh:    +vandaagResterendKwh.toFixed(2),
+      morgenKwh:              +morgenKwh.toFixed(2),
       grafiekData,
-      bijgewerkt:          nu.toISOString(),
+      estimatedActualsDagen,
+      bijgewerkt:             nu.toISOString(),
     };
 
     // Cache opslaan

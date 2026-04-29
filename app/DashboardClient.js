@@ -124,7 +124,7 @@ export default function DashboardClient({ data }) {
           )}
         </div>
 
-        <ZonTegel />
+        <ZonTegel energieData={data} />
 
         <p className="text-center text-gray-600 text-xs mt-6">
           Data wordt elke nacht om 00:01 automatisch bijgewerkt
@@ -134,8 +134,8 @@ export default function DashboardClient({ data }) {
   );
 }
 
-function ZonTegel() {
-  const [zon, setZon]         = useState(null);
+function ZonTegel({ energieData = [] }) {
+  const [zon,     setZon]     = useState(null);
   const [loading, setLoading] = useState(true);
 
   async function fetchZon() {
@@ -143,10 +143,11 @@ function ZonTegel() {
       const res  = await fetch(`/api/solcast?secret=Nummer14!`);
       const json = await res.json();
       if (json.success) setZon({
-        vandaagKwh:    json.vandaagKwh,
-        vandaagGemeten: json.vandaagGeproduceerdKwh ?? null,
-        morgenKwh:     json.morgenKwh,
-        grafiekData:   json.grafiekData || [],
+        vandaagKwh:           json.vandaagKwh,
+        vandaagGemeten:       json.vandaagGeproduceerdKwh ?? null,
+        morgenKwh:            json.morgenKwh,
+        grafiekData:          json.grafiekData || [],
+        estimatedActualsDagen: json.estimatedActualsDagen || [],
       });
     } catch(e) { console.error(e); }
     setLoading(false);
@@ -154,10 +155,9 @@ function ZonTegel() {
 
   useEffect(() => {
     fetchZon();
-    const iv = setInterval(fetchZon, 15 * 60 * 1000); // elke 15 min
+    const iv = setInterval(fetchZon, 15 * 60 * 1000);
     return () => clearInterval(iv);
   }, []);
-
 
   if (loading) return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
@@ -165,9 +165,75 @@ function ZonTegel() {
     </div>
   );
 
-  return (
+  if (!zon) return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
-      {zon ? <ZonPrognose zon={zon} /> : <p className="text-gray-500 text-sm text-center py-4">Geen zonneprognose beschikbaar</p>}
+      <p className="text-gray-500 text-sm text-center py-4">Geen zonneprognose beschikbaar</p>
+    </div>
+  );
+
+  // Bouw vergelijkingsdata: Solcast satellite vs VRM actuals
+  const vrmMap = Object.fromEntries(
+    energieData.map(d => [d.datum, +parseFloat(d.solar_yield_kwh || 0).toFixed(2)])
+  );
+  const vergelijkData = zon.estimatedActualsDagen
+    .map(d => ({
+      dag:      d.datum.slice(5),           // MM-DD
+      datum:    d.datum,
+      solcast:  d.kwh,
+      vrm:      vrmMap[d.datum] ?? null,
+    }))
+    .filter(d => d.vrm !== null);           // alleen dagen met VRM data
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6 space-y-5">
+      <ZonPrognose zon={zon} />
+      {vergelijkData.length > 0 && <ZonVergelijk data={vergelijkData} />}
+    </div>
+  );
+}
+
+// ── Solcast vs VRM vergelijkingsgrafiek ──────────────────────────────────────
+function ZonVergelijk({ data }) {
+  const tip = ({ active, payload }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    const diff = d.vrm != null && d.solcast > 0
+      ? Math.round((d.vrm / d.solcast - 1) * 100)
+      : null;
+    return (
+      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 170 }}>
+        <p style={{ fontWeight: 700, marginBottom: 6 }}>{d.datum}</p>
+        <p style={{ color: '#FB923C' }}>Solcast schatting: <strong>{d.solcast} kWh</strong></p>
+        {d.vrm != null && <p style={{ color: '#34D399' }}>VRM werkelijk: <strong>{d.vrm} kWh</strong></p>}
+        {diff != null && (
+          <p style={{ color: diff >= 0 ? '#34D399' : '#F87171', marginTop: 4 }}>
+            {diff >= 0 ? `+${diff}%` : `${diff}%`} t.o.v. voorspelling
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="border-t border-gray-700 pt-4">
+      <div className="flex flex-wrap justify-between items-baseline gap-2 mb-3">
+        <p className="text-sm font-semibold text-gray-200">📊 Voorspelling vs werkelijkheid</p>
+        <div className="flex gap-4 text-xs text-gray-400">
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-orange-400"/>Solcast schatting</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>VRM werkelijk</span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={160}>
+        <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="20%" barGap={3}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+          <XAxis dataKey="dag" tick={{ fontSize: 10, fill: '#9CA3AF' }} />
+          <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} width={30} unit=" kWh" />
+          <Tooltip content={tip} />
+          <Bar dataKey="solcast" name="Solcast" radius={[2,2,0,0]} fill="#FB923C" isAnimationActive={false} />
+          <Bar dataKey="vrm"     name="VRM"     radius={[2,2,0,0]} fill="#10B981" isAnimationActive={false} />
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-gray-600 mt-1">Solcast = satellietschatting · VRM = gemeten opbrengst · alleen volledige dagen</p>
     </div>
   );
 }
