@@ -419,41 +419,24 @@ const P1_2025 = [
   { maand: 'dec', imp: 651, exp: 64  },
 ];
 
-// Alle maanden van 2026-01 t/m opgegeven maand (YYYY-MM)
-function maandenTot(totMaand) {
-  const result = [];
-  let jaar = 2026, m = 1;
-  while (true) {
-    const key = `${jaar}-${String(m).padStart(2, '0')}`;
-    result.push(key);
-    if (key === totMaand) break;
-    if (++m > 12) { m = 1; jaar++; }
-    if (jaar > 2030) break; // veiligheidsklep
-  }
-  return result;
-}
+// Vaste lijst — alle maanden 2026 (wordt uitgebreid als nodig)
+const ALLE_MAANDEN = [
+  '2026-01','2026-02','2026-03','2026-04','2026-05','2026-06',
+  '2026-07','2026-08','2026-09','2026-10','2026-11','2026-12',
+];
 
 function ImportExportWidget({ data }) {
   const [view, setView] = useState('jaar');
 
-  // Default naar laatste dag/maand mét data — nooit naar "vandaag" dat leeg is
-  const gesorteerd   = [...data].sort((a, b) => a.datum.localeCompare(b.datum));
-  const laatste      = gesorteerd.at(-1);
-  const defaultDag   = laatste?.datum ?? new Date().toISOString().slice(0, 10);
+  // Default naar laatste dag/maand mét data (nooit "vandaag" dat nog leeg is)
+  const datumLijst  = data.map(d => d.datum).filter(Boolean).sort();
+  const defaultDag  = datumLijst.length > 0 ? datumLijst[datumLijst.length - 1] : '2026-04-04';
   const defaultMaand = defaultDag.slice(0, 7);
 
   const [selectedMaand, setSelectedMaand] = useState(defaultMaand);
   const [selectedDag,   setSelectedDag]   = useState(defaultDag);
 
-  // Bereken ALLE_MAANDEN client-side op basis van geselecteerde maand
-  // zodat server- en client-render altijd overeenkomen
-  const huidigeKalenderMaand = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  })();
-  const bovengrens  = selectedMaand > huidigeKalenderMaand ? selectedMaand : huidigeKalenderMaand;
-  const alleMaanden = maandenTot(bovengrens);
-  const maandIdx    = alleMaanden.indexOf(selectedMaand);
+  const maandIdx = ALLE_MAANDEN.indexOf(selectedMaand);
 
   function openDag(datum) { setSelectedDag(datum); setView('dag'); }
 
@@ -476,7 +459,6 @@ function ImportExportWidget({ data }) {
       {view === 'maand' && (
         <MaandView
           data={data}
-          alleMaanden={alleMaanden}
           selectedMaand={selectedMaand}
           setSelectedMaand={setSelectedMaand}
           maandIdx={maandIdx}
@@ -588,7 +570,7 @@ function JaarView({ data }) {
 }
 
 // ── Maandoverzicht: dagelijkse import/export voor één maand ──────────────────
-function MaandView({ data, alleMaanden, selectedMaand, setSelectedMaand, maandIdx, onDagClick }) {
+function MaandView({ data, selectedMaand, setSelectedMaand, maandIdx, onDagClick }) {
   const maandData = data
     .filter(d => d.datum.startsWith(selectedMaand))
     .map(d => ({
@@ -624,7 +606,7 @@ function MaandView({ data, alleMaanden, selectedMaand, setSelectedMaand, maandId
     <>
       {/* Navigatie — door alle maanden van 2026-01 t/m nu */}
       <div className="flex items-center justify-between mb-4">
-        <button onClick={() => setSelectedMaand(alleMaanden[maandIdx - 1])} disabled={maandIdx <= 0}
+        <button onClick={() => setSelectedMaand(ALLE_MAANDEN[maandIdx - 1])} disabled={maandIdx <= 0}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">‹</button>
         <div className="text-center">
           <select
@@ -632,7 +614,7 @@ function MaandView({ data, alleMaanden, selectedMaand, setSelectedMaand, maandId
             onChange={e => setSelectedMaand(e.target.value)}
             className="bg-gray-700 text-gray-200 text-sm font-semibold rounded px-2 py-1 border border-gray-600 focus:outline-none"
           >
-            {alleMaanden.map(m => {
+            {ALLE_MAANDEN.map(m => {
               const [j, mn] = m.split('-');
               return <option key={m} value={m}>{MAAND_NAMEN[parseInt(mn,10)-1]} {j}</option>;
             })}
@@ -641,7 +623,7 @@ function MaandView({ data, alleMaanden, selectedMaand, setSelectedMaand, maandId
             {maandData.length > 0 ? `${maandData.length} dagen · imp ${totImp} kWh · exp ${totExp} kWh` : 'geen data'}
           </p>
         </div>
-        <button onClick={() => setSelectedMaand(alleMaanden[maandIdx + 1])} disabled={maandIdx >= alleMaanden.length - 1}
+        <button onClick={() => setSelectedMaand(ALLE_MAANDEN[maandIdx + 1])} disabled={maandIdx >= ALLE_MAANDEN.length - 1}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">›</button>
       </div>
 
