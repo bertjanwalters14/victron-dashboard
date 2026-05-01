@@ -741,13 +741,6 @@ function DagView({ data, selectedDag, setSelectedDag }) {
               <p className="text-xs text-gray-500 mt-0.5">kWh</p>
             </div>
           )}
-          {dag.bat_meerwaarde != null && (
-            <div className="bg-gray-700 rounded-xl p-4 text-center sm:col-span-2">
-              <p className="text-xs text-purple-400 mb-1">🔋 Batterij meerwaarde</p>
-              <p className="text-2xl font-bold text-purple-300">€{parseFloat(dag.bat_meerwaarde).toFixed(2)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">t.o.v. zonder batterij</p>
-            </div>
-          )}
         </div>
       )}
       <p className="text-xs text-gray-600 mt-4">Gebruik ‹ › om door de dagen te navigeren</p>
