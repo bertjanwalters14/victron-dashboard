@@ -419,27 +419,41 @@ const P1_2025 = [
   { maand: 'dec', imp: 651, exp: 64  },
 ];
 
-// Alle maanden van 2026-01 t/m huidige maand
-function alleMaandenTotNu() {
-  const now = new Date();
+// Alle maanden van 2026-01 t/m opgegeven maand (YYYY-MM)
+function maandenTot(totMaand) {
   const result = [];
   let jaar = 2026, m = 1;
-  while (jaar < now.getFullYear() || (jaar === now.getFullYear() && m <= now.getMonth() + 1)) {
-    result.push(`${jaar}-${String(m).padStart(2, '0')}`);
+  while (true) {
+    const key = `${jaar}-${String(m).padStart(2, '0')}`;
+    result.push(key);
+    if (key === totMaand) break;
     if (++m > 12) { m = 1; jaar++; }
+    if (jaar > 2030) break; // veiligheidsklep
   }
   return result;
 }
-const ALLE_MAANDEN = alleMaandenTotNu();
 
 function ImportExportWidget({ data }) {
   const [view, setView] = useState('jaar');
 
-  const huidigeMaand = new Date().toISOString().slice(0, 7);
-  const [selectedMaand, setSelectedMaand] = useState(huidigeMaand);
-  const [selectedDag,   setSelectedDag]   = useState(new Date().toISOString().slice(0, 10));
+  // Default naar laatste dag/maand mét data — nooit naar "vandaag" dat leeg is
+  const gesorteerd   = [...data].sort((a, b) => a.datum.localeCompare(b.datum));
+  const laatste      = gesorteerd.at(-1);
+  const defaultDag   = laatste?.datum ?? new Date().toISOString().slice(0, 10);
+  const defaultMaand = defaultDag.slice(0, 7);
 
-  const maandIdx = ALLE_MAANDEN.indexOf(selectedMaand);
+  const [selectedMaand, setSelectedMaand] = useState(defaultMaand);
+  const [selectedDag,   setSelectedDag]   = useState(defaultDag);
+
+  // Bereken ALLE_MAANDEN client-side op basis van geselecteerde maand
+  // zodat server- en client-render altijd overeenkomen
+  const huidigeKalenderMaand = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  })();
+  const bovengrens  = selectedMaand > huidigeKalenderMaand ? selectedMaand : huidigeKalenderMaand;
+  const alleMaanden = maandenTot(bovengrens);
+  const maandIdx    = alleMaanden.indexOf(selectedMaand);
 
   function openDag(datum) { setSelectedDag(datum); setView('dag'); }
 
@@ -462,6 +476,7 @@ function ImportExportWidget({ data }) {
       {view === 'maand' && (
         <MaandView
           data={data}
+          alleMaanden={alleMaanden}
           selectedMaand={selectedMaand}
           setSelectedMaand={setSelectedMaand}
           maandIdx={maandIdx}
@@ -573,7 +588,7 @@ function JaarView({ data }) {
 }
 
 // ── Maandoverzicht: dagelijkse import/export voor één maand ──────────────────
-function MaandView({ data, selectedMaand, setSelectedMaand, maandIdx, onDagClick }) {
+function MaandView({ data, alleMaanden, selectedMaand, setSelectedMaand, maandIdx, onDagClick }) {
   const maandData = data
     .filter(d => d.datum.startsWith(selectedMaand))
     .map(d => ({
@@ -609,7 +624,7 @@ function MaandView({ data, selectedMaand, setSelectedMaand, maandIdx, onDagClick
     <>
       {/* Navigatie — door alle maanden van 2026-01 t/m nu */}
       <div className="flex items-center justify-between mb-4">
-        <button onClick={() => setSelectedMaand(ALLE_MAANDEN[maandIdx - 1])} disabled={maandIdx <= 0}
+        <button onClick={() => setSelectedMaand(alleMaanden[maandIdx - 1])} disabled={maandIdx <= 0}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">‹</button>
         <div className="text-center">
           <select
@@ -617,7 +632,7 @@ function MaandView({ data, selectedMaand, setSelectedMaand, maandIdx, onDagClick
             onChange={e => setSelectedMaand(e.target.value)}
             className="bg-gray-700 text-gray-200 text-sm font-semibold rounded px-2 py-1 border border-gray-600 focus:outline-none"
           >
-            {ALLE_MAANDEN.map(m => {
+            {alleMaanden.map(m => {
               const [j, mn] = m.split('-');
               return <option key={m} value={m}>{MAAND_NAMEN[parseInt(mn,10)-1]} {j}</option>;
             })}
@@ -626,7 +641,7 @@ function MaandView({ data, selectedMaand, setSelectedMaand, maandIdx, onDagClick
             {maandData.length > 0 ? `${maandData.length} dagen · imp ${totImp} kWh · exp ${totExp} kWh` : 'geen data'}
           </p>
         </div>
-        <button onClick={() => setSelectedMaand(ALLE_MAANDEN[maandIdx + 1])} disabled={maandIdx >= ALLE_MAANDEN.length - 1}
+        <button onClick={() => setSelectedMaand(alleMaanden[maandIdx + 1])} disabled={maandIdx >= alleMaanden.length - 1}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">›</button>
       </div>
 
@@ -658,11 +673,15 @@ function MaandView({ data, selectedMaand, setSelectedMaand, maandIdx, onDagClick
 
 // ── Dagdetail: KPI-kaartjes voor één dag ─────────────────────────────────────
 function DagView({ data, selectedDag, setSelectedDag }) {
-  const dagMap = Object.fromEntries(data.map(d => [d.datum, d]));
-  const dag = dagMap[selectedDag] ?? null;
+  const dagMap  = Object.fromEntries(data.map(d => [d.datum, d]));
+  const dag     = dagMap[selectedDag] ?? null;
+  const heeftData = dag !== null;
 
-  const vandaag = new Date().toISOString().slice(0, 10);
-  const vroegste = '2026-01-01';
+  // Navigatiegrenzen op basis van werkelijke data
+  const datums  = data.map(d => d.datum).sort();
+  const vroegste = datums[0] ?? '2026-01-01';
+  const laatste  = datums.at(-1) ?? new Date().toISOString().slice(0, 10);
+  const vandaag  = new Date().toISOString().slice(0, 10);
 
   function nav(delta) {
     const d = new Date(selectedDag);
@@ -687,15 +706,24 @@ function DagView({ data, selectedDag, setSelectedDag }) {
             max={vandaag}
             onChange={e => e.target.value && setSelectedDag(e.target.value)}
             className="bg-gray-700 text-gray-200 text-sm font-semibold rounded px-2 py-1 border border-gray-600 focus:outline-none"
+            style={{ colorScheme: 'dark' }}
           />
           <p className="text-xs text-gray-500 mt-1 capitalize">{selectedDag ? fmt(selectedDag) : ''}</p>
         </div>
-        <button onClick={() => nav(1)} disabled={selectedDag >= vandaag}
+        <button onClick={() => nav(1)} disabled={selectedDag >= laatste}
           className="px-2 py-1 rounded bg-gray-700 text-gray-300 disabled:opacity-30 hover:bg-gray-600 text-sm">›</button>
       </div>
 
-      {!dag ? (
-        <p className="text-gray-500 text-sm text-center py-8">Geen data beschikbaar voor deze dag</p>
+      {!heeftData ? (
+        <div className="text-center py-8">
+          <p className="text-gray-500 text-sm mb-3">Geen data voor {fmt(selectedDag)}</p>
+          {laatste && laatste !== selectedDag && (
+            <button onClick={() => setSelectedDag(laatste)}
+              className="text-xs text-blue-400 hover:text-blue-300 underline">
+              Ga naar laatste dag met data ({laatste})
+            </button>
+          )}
+        </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-gray-700 rounded-xl p-4 text-center">
