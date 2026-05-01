@@ -92,8 +92,6 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        <ImportExportWidget data={data} />
-
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <h2 className="font-semibold text-gray-200 mb-4">Recente dagen</h2>
           {data.length > 0 ? (
@@ -125,6 +123,8 @@ export default function DashboardClient({ data }) {
         </div>
 
         <ZonTegel energieData={data} />
+
+        <ImportExportWidget data={data} />
 
         <p className="text-center text-gray-600 text-xs mt-6">
           Data wordt elke nacht om 00:01 automatisch bijgewerkt
