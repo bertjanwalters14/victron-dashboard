@@ -110,7 +110,7 @@ export default function DashboardClient({ data }) {
                 <tbody>
                   {[...data].reverse().slice(0, 8).map(d => (
                     <tr key={d.datum} className="border-b border-gray-700">
-                      <td className="py-2 text-gray-300">{new Date(d.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}</td>
+                      <td className="py-2 text-gray-300">{parseInt(d.datum.slice(8), 10)} {MAAND_NAMEN[parseInt(d.datum.slice(5, 7), 10) - 1]}</td>
                       <td className="py-2 text-right text-yellow-400">{parseFloat(d.solar_yield_kwh || 0).toFixed(1)}</td>
                       <td className="py-2 text-right text-blue-400">{parseFloat(d.net_export_kwh || 0).toFixed(2)}</td>
                       <td className="py-2 text-right text-green-400 font-medium">€{parseFloat(d.winst_euro || 0).toFixed(2)}</td>
@@ -480,7 +480,7 @@ function ImportExportWidget({ data }) {
 function JaarView({ data }) {
   const act = {};
   for (const d of data) {
-    const key = MAAND_NAMEN[new Date(d.datum).getMonth()];
+    const key = MAAND_NAMEN[parseInt(d.datum.slice(5, 7), 10) - 1];
     if (!act[key]) act[key] = { imp: 0, exp: 0 };
     act[key].imp += parseFloat(d.net_import_kwh || 0);
     act[key].exp += parseFloat(d.net_export_kwh || 0);
@@ -672,7 +672,13 @@ function DagView({ data, selectedDag, setSelectedDag }) {
     if (nieuw >= vroegste && nieuw <= vandaag) setSelectedDag(nieuw);
   }
 
-  const fmt = iso => new Date(iso).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const WEEKDAGEN = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
+  const MAAND_LANG = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+  const fmt = iso => {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dag = new Date(y, m - 1, d).getDay(); // local Date constructor → no UTC offset issue
+    return `${WEEKDAGEN[dag]} ${d} ${MAAND_LANG[m - 1]} ${y}`;
+  };
 
   return (
     <>
