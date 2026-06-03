@@ -36,7 +36,10 @@ export default function DashboardClient({ data }) {
             <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
             <p className="text-gray-400 mt-1">Installatie: 4 april 2026 · Investering: €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')} <span className="text-green-600 text-xs">(incl. BTW teruggave)</span></p>
           </div>
-          <RefreshButton />
+          <div className="flex flex-col gap-2 items-end">
+            <a href="/ess" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold whitespace-nowrap">⚡ Live sturing →</a>
+            <RefreshButton />
+          </div>
         </div>
 
         <LiveVandaag />

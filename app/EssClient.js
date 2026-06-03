@@ -27,7 +27,8 @@ export default function EssClient({ status, forecast, bijgewerkt }) {
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-5xl mx-auto px-4 py-6">
-        <h1 className="text-2xl md:text-3xl font-bold mb-1">⚡ ESS Sturing (live)</h1>
+        <a href="/" className="text-sm text-blue-400 hover:text-blue-300">← Terug naar dashboard</a>
+        <h1 className="text-2xl md:text-3xl font-bold mb-1 mt-2">⚡ ESS Sturing (live)</h1>
         <p className="text-gray-500 text-xs mb-5">
           Laatste update: {bijgewerkt ? new Date(bijgewerkt).toLocaleString('nl-NL') : '—'}
         </p>
