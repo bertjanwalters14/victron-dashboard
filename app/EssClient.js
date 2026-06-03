@@ -1,5 +1,7 @@
 'use client';
+import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { setLaadVanNet } from './actions';
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4' };
 
@@ -36,18 +38,39 @@ function Card({ label, value }) {
   );
 }
 
-export default function EssClient({ status, forecast, bijgewerkt }) {
+export default function EssClient({ status, forecast, bijgewerkt, laadVanNet }) {
   const data = (forecast || []).map(d => ({ ...d }));
   const s = status || {};
+  const [aan, setAan] = useState(!!laadVanNet);
+  const [pending, startTransition] = useTransition();
+
+  function toggleLaden() {
+    const next = !aan;
+    setAan(next);
+    startTransition(() => setLaadVanNet(next));
+  }
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-5xl mx-auto px-4 py-6">
         <a href="/" className="text-sm text-blue-400 hover:text-blue-300">← Terug naar dashboard</a>
         <h1 className="text-2xl md:text-3xl font-bold mb-1 mt-2">⚡ ESS Sturing (live)</h1>
-        <p className="text-gray-500 text-xs mb-5">
+        <p className="text-gray-500 text-xs mb-4">
           Laatste update: {bijgewerkt ? new Date(bijgewerkt).toLocaleString('nl-NL') : '—'}
         </p>
+
+        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3">
+          <button
+            onClick={toggleLaden}
+            disabled={pending}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${aan ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
+          >
+            Laden uit net: {aan ? 'AAN' : 'UIT'}
+          </button>
+          <span className="text-xs text-gray-400">
+            {aan ? '⚠️ Grid-arbitrage actief (koopt uit net op goedkope uren)' : 'Alleen PV-laden (saldering-vriendelijk)'}
+          </span>
+        </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="rounded-xl p-4 text-white" style={{ background: modeColor(s.mode) }}>

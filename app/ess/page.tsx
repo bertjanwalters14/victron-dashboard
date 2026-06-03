@@ -8,6 +8,7 @@ export default async function EssPage() {
   let status: any = {};
   let forecast: any[] = [];
   let bijgewerkt: string | null = null;
+  let laadVanNet = false;
 
   try {
     const sql = neon(process.env.DATABASE_URL!);
@@ -17,9 +18,11 @@ export default async function EssPage() {
       forecast = rows[0].forecast || [];
       bijgewerkt = rows[0].bijgewerkt as any;
     }
+    const inst = await sql`SELECT waarde FROM instellingen WHERE sleutel = 'laad_van_net'`;
+    laadVanNet = inst[0]?.waarde === 'true';
   } catch (e) {
     console.error('ESS live DB error:', e);
   }
 
-  return <EssClient status={status} forecast={forecast} bijgewerkt={bijgewerkt} />;
+  return <EssClient status={status} forecast={forecast} bijgewerkt={bijgewerkt} laadVanNet={laadVanNet} />;
 }
