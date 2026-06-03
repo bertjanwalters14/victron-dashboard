@@ -62,14 +62,14 @@ export default function EssClient({ status, forecast, bijgewerkt }) {
         <div className="bg-gray-800 rounded-xl p-4 md:p-5">
           <h2 className="font-semibold text-gray-200 mb-3">📊 Voorspelling vandaag + morgen</h2>
           <ResponsiveContainer width="100%" height={340}>
-            <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+            <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
               <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)">
+              <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)" maxBarSize={16} radius={[3, 3, 0, 0]} fillOpacity={0.9}>
                 {data.map((d, i) => <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'} />)}
               </Bar>
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#16a34a" dot={false} strokeWidth={2} />
