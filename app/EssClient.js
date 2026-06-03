@@ -11,6 +11,22 @@ function modeColor(m) {
   return '#64748b';
 }
 
+const CAT_LABEL = { kopen: 'Kopen', verkopen: 'Verkopen', normaal: 'Zelfverbruik', gratis: 'Gratis laden (negatief)' };
+
+function EssTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '8px 11px', color: '#fff', fontSize: 12, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{d.uur}</div>
+      <div>Prijs all-in: <b>€{Number(d.prijs).toFixed(3)}</b></div>
+      <div style={{ color: '#fde047' }}>Zon: {Number(d.pv).toFixed(1)} kWh</div>
+      <div style={{ color: '#22c55e' }}>SOC: {d.soc}%</div>
+      <div style={{ color: '#9ca3af', marginTop: 2 }}>{CAT_LABEL[d.cat] || d.cat}</div>
+    </div>
+  );
+}
+
 function Card({ label, value }) {
   return (
     <div className="bg-gray-800 rounded-xl p-4">
@@ -51,7 +67,7 @@ export default function EssClient({ status, forecast, bijgewerkt }) {
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
               <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', fontSize: 12, borderRadius: 8 }} />
+              <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)">
                 {data.map((d, i) => <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'} />)}
