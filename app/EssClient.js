@@ -23,7 +23,7 @@ function EssTooltip({ active, payload }) {
       <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{d.uur}</div>
       <div>Prijs all-in: <b>€{Number(d.prijs).toFixed(3)}</b></div>
       <div style={{ color: '#fde047' }}>Zon: {Number(d.pv).toFixed(1)} kWh</div>
-      <div style={{ color: '#22c55e' }}>SOC: {d.soc}%</div>
+      <div style={{ color: '#a855f7' }}>SOC: {d.soc}%</div>
       <div style={{ color: '#9ca3af', marginTop: 2 }}>{CAT_LABEL[d.cat] || d.cat}</div>
     </div>
   );
@@ -95,7 +95,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet }) 
               <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)" maxBarSize={16} radius={[3, 3, 0, 0]} fillOpacity={0.9}>
                 {data.map((d, i) => <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'} />)}
               </Bar>
-              <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#16a34a" dot={false} strokeWidth={2} />
+              <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
           </ResponsiveContainer>
           <p className="text-xs text-gray-500 mt-2">
