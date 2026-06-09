@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
-import { setLaadVanNet } from './actions';
+import { setLaadVanNet, setKeepCharged } from './actions';
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4' };
 
@@ -38,16 +38,23 @@ function Card({ label, value }) {
   );
 }
 
-export default function EssClient({ status, forecast, bijgewerkt, laadVanNet }) {
+export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged }) {
   const data = (forecast || []).map(d => ({ ...d }));
   const s = status || {};
   const [aan, setAan] = useState(!!laadVanNet);
+  const [vol, setVol] = useState(!!keepCharged);
   const [pending, startTransition] = useTransition();
 
   function toggleLaden() {
     const next = !aan;
     setAan(next);
     startTransition(() => setLaadVanNet(next));
+  }
+
+  function toggleVol() {
+    const next = !vol;
+    setVol(next);
+    startTransition(() => setKeepCharged(next));
   }
 
   return (
@@ -69,6 +76,19 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet }) 
           </button>
           <span className="text-xs text-gray-400">
             {aan ? '⚠️ Grid-arbitrage actief (koopt uit net op goedkope uren)' : 'Alleen PV-laden (saldering-vriendelijk)'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3">
+          <button
+            onClick={toggleVol}
+            disabled={pending}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${vol ? 'bg-amber-500 hover:bg-amber-400 text-black' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
+          >
+            Accu altijd vol: {vol ? 'AAN' : 'UIT'}
+          </button>
+          <span className="text-xs text-gray-400">
+            {vol ? '🔋 Accu wordt vol gehouden (geen verkoop/ontlading) — handel gepauzeerd' : 'Normale handel/zelfverbruik'}
           </span>
         </div>
 

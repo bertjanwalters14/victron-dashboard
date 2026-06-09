@@ -9,6 +9,7 @@ export default async function EssPage() {
   let forecast: any[] = [];
   let bijgewerkt: string | null = null;
   let laadVanNet = false;
+  let keepCharged = false;
 
   try {
     const sql = neon(process.env.DATABASE_URL!);
@@ -18,11 +19,14 @@ export default async function EssPage() {
       forecast = rows[0].forecast || [];
       bijgewerkt = rows[0].bijgewerkt as any;
     }
-    const inst = await sql`SELECT waarde FROM instellingen WHERE sleutel = 'laad_van_net'`;
-    laadVanNet = inst[0]?.waarde === 'true';
+    const inst = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN ('laad_van_net', 'keep_charged')`;
+    const m: any = {};
+    inst.forEach((r: any) => { m[r.sleutel] = r.waarde; });
+    laadVanNet = m['laad_van_net'] === 'true';
+    keepCharged = m['keep_charged'] === 'true';
   } catch (e) {
     console.error('ESS live DB error:', e);
   }
 
-  return <EssClient status={status} forecast={forecast} bijgewerkt={bijgewerkt} laadVanNet={laadVanNet} />;
+  return <EssClient status={status} forecast={forecast} bijgewerkt={bijgewerkt} laadVanNet={laadVanNet} keepCharged={keepCharged} />;
 }

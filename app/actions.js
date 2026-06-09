@@ -15,3 +15,16 @@ export async function setLaadVanNet(aan) {
   revalidatePath('/ess');
   return aan;
 }
+
+// Server action: zet "accu altijd vol houden" aan/uit.
+export async function setKeepCharged(aan) {
+  const sql = neon(process.env.DATABASE_URL);
+  await sql`
+    INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
+    VALUES ('keep_charged', ${aan ? 'true' : 'false'}, NOW())
+    ON CONFLICT (sleutel) DO UPDATE SET
+      waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
+  `;
+  revalidatePath('/ess');
+  return aan;
+}
