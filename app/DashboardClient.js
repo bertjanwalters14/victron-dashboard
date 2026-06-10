@@ -479,7 +479,7 @@ function ImportExportWidget({ data }) {
   );
 }
 
-// ── Jaaroverzicht: maandelijkse import/export 2025 vs 2026 ──────────────────
+// ── Jaaroverzicht: verschilgrafiek 2026 t.o.v. 2025 ────────────────────────
 function JaarView({ data }) {
   const act = {};
   for (const d of data) {
@@ -488,86 +488,90 @@ function JaarView({ data }) {
     act[key].imp += parseFloat(d.net_import_kwh || 0);
     act[key].exp += parseFloat(d.net_export_kwh || 0);
   }
-  const chartData = P1_2025.map(m => ({
-    maand: m.maand, imp25: m.imp, exp25: m.exp,
-    imp26: act[m.maand] ? +act[m.maand].imp.toFixed(0) : null,
-    exp26: act[m.maand] ? +act[m.maand].exp.toFixed(0) : null,
-  }));
-  const maanden26 = P1_2025.filter(m => act[m.maand]);
-  const totImp25 = maanden26.reduce((s, m) => s + m.imp, 0);
-  const totExp25 = maanden26.reduce((s, m) => s + m.exp, 0);
-  const totImp26 = maanden26.reduce((s, m) => s + (act[m.maand]?.imp || 0), 0);
-  const totExp26 = maanden26.reduce((s, m) => s + (act[m.maand]?.exp || 0), 0);
-  const impRed = totImp25 > 0 ? Math.round((1 - totImp26 / totImp25) * 100) : null;
-  const expRed = totExp25 > 0 ? Math.round((1 - totExp26 / totExp25) * 100) : null;
-  const heeft26 = maanden26.length > 0;
+
+  // Alleen maanden met 2026-data — zodat er altijd een vergelijk is
+  const chartData = P1_2025
+    .filter(m => act[m.maand])
+    .map(m => ({
+      maand:       m.maand,
+      impBespaar:  +(m.imp - act[m.maand].imp).toFixed(0),   // positief = minder import
+      expVerschil: +(act[m.maand].exp - m.exp).toFixed(0),   // positief = meer export
+      imp25: m.imp, exp25: m.exp,
+      imp26: +act[m.maand].imp.toFixed(0),
+      exp26: +act[m.maand].exp.toFixed(0),
+    }));
+
+  const totImpBespaar  = chartData.reduce((s, m) => s + m.impBespaar,  0);
+  const totExpVerschil = chartData.reduce((s, m) => s + m.expVerschil, 0);
 
   const tip = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
     const m = payload[0].payload;
     return (
-      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 180 }}>
+      <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#F9FAFB', minWidth: 210 }}>
         <p style={{ fontWeight: 700, marginBottom: 6 }}>{m.maand}</p>
-        <p style={{ color: '#94A3B8' }}>Import 2025: <strong>{m.imp25} kWh</strong></p>
-        {m.imp26 != null && <p style={{ color: '#60A5FA' }}>Import 2026: <strong>{m.imp26} kWh</strong>
-          {m.imp25 > 0 && <span style={{ color: '#34D399', marginLeft: 6 }}>−{Math.round((1 - m.imp26/m.imp25)*100)}%</span>}
-        </p>}
-        <p style={{ color: '#94A3B8', marginTop: 4 }}>Export 2025: <strong>{m.exp25} kWh</strong></p>
-        {m.exp26 != null && <p style={{ color: '#34D399' }}>Export 2026: <strong>{m.exp26} kWh</strong>
-          {m.exp25 > 0 && <span style={{ color: '#F59E0B', marginLeft: 6 }}>{m.exp26 >= m.exp25 ? '+' : '−'}{Math.abs(Math.round((1 - m.exp26/m.exp25)*100))}%</span>}
-        </p>}
+        <p style={{ color: '#94A3B8' }}>Import: {m.imp25} → {m.imp26} kWh
+          <span style={{ color: m.impBespaar >= 0 ? '#34D399' : '#F87171', marginLeft: 6, fontWeight: 600 }}>
+            {m.impBespaar >= 0 ? `−${m.impBespaar}` : `+${Math.abs(m.impBespaar)}`} kWh
+          </span>
+        </p>
+        <p style={{ color: '#94A3B8', marginTop: 4 }}>Export: {m.exp25} → {m.exp26} kWh
+          <span style={{ color: m.expVerschil >= 0 ? '#34D399' : '#F87171', marginLeft: 6, fontWeight: 600 }}>
+            {m.expVerschil >= 0 ? `+${m.expVerschil}` : `${m.expVerschil}`} kWh
+          </span>
+        </p>
       </div>
     );
   };
 
+  if (chartData.length === 0) return (
+    <p className="text-xs text-yellow-500 py-4">⚠️ Nog geen 2026-data beschikbaar.</p>
+  );
+
   return (
     <>
-      <p className="text-xs text-gray-500 mb-4">Maandtotalen — 2025 (zonder batterij) vs 2026 (met batterij)</p>
-      {heeft26 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-          <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Import 2025</p>
-            <p className="text-lg font-bold text-slate-300">{Math.round(totImp25)} kWh</p>
-            <p className="text-xs text-gray-500 mt-0.5">dezelfde maanden</p>
-          </div>
-          <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Import 2026</p>
-            <p className="text-lg font-bold text-blue-400">{Math.round(totImp26)} kWh</p>
-            {impRed != null && <p className="text-xs text-emerald-400 mt-0.5">−{impRed}% minder van net</p>}
-          </div>
-          <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Export 2025</p>
-            <p className="text-lg font-bold text-slate-300">{Math.round(totExp25)} kWh</p>
-            <p className="text-xs text-gray-500 mt-0.5">dezelfde maanden</p>
-          </div>
-          <div className="bg-gray-700 rounded-lg p-3 text-center">
-            <p className="text-xs text-gray-400 mb-1">Export 2026</p>
-            <p className="text-lg font-bold text-emerald-400">{Math.round(totExp26)} kWh</p>
-            {expRed != null && <p className="text-xs text-gray-400 mt-0.5">{expRed > 0 ? `−${expRed}%` : `+${Math.abs(expRed)}%`} vs 2025</p>}
-          </div>
+      <p className="text-xs text-gray-500 mb-4">
+        Verschil t.o.v. 2025 (zonder batterij) · alleen maanden met 2026-data · positief = beter
+      </p>
+
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="bg-gray-700 rounded-lg p-3 text-center">
+          <p className="text-xs text-gray-400 mb-1">Import besparing</p>
+          <p className={`text-xl font-bold ${totImpBespaar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            {totImpBespaar >= 0 ? `−${totImpBespaar}` : `+${Math.abs(totImpBespaar)}`} kWh
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">minder van net gehaald</p>
         </div>
-      ) : (
-        <p className="text-xs text-yellow-500 mb-4">⚠️ Nog geen 2026-data — wordt gevuld na backfill op 1 mei</p>
-      )}
-      <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-400">
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-slate-500"/>Import 2025</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500"/>Import 2026</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-gray-400"/>Export 2025</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>Export 2026</span>
+        <div className="bg-gray-700 rounded-lg p-3 text-center">
+          <p className="text-xs text-gray-400 mb-1">Export verschil</p>
+          <p className={`text-xl font-bold ${totExpVerschil >= 0 ? 'text-emerald-400' : 'text-orange-400'}`}>
+            {totExpVerschil >= 0 ? `+${totExpVerschil}` : `${totExpVerschil}`} kWh
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">t.o.v. 2025</p>
+        </div>
       </div>
-      <ResponsiveContainer width="100%" height={230}>
-        <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="15%" barGap={2}>
+
+      <div className="flex gap-4 mb-3 text-xs text-gray-400">
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500"/>Import besparing</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500"/>Export verschil</span>
+      </div>
+
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap="30%" barGap={4}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
           <XAxis dataKey="maand" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-          <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} width={36} unit=" kWh" />
+          <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} width={40} unit=" kWh" />
           <Tooltip content={tip} />
-          <Bar dataKey="imp25" radius={[2,2,0,0]} fill="#64748B" isAnimationActive={false} />
-          <Bar dataKey="imp26" radius={[2,2,0,0]} fill="#3B82F6" isAnimationActive={false} />
-          <Bar dataKey="exp25" radius={[2,2,0,0]} fill="#9CA3AF" isAnimationActive={false} />
-          <Bar dataKey="exp26" radius={[2,2,0,0]} fill="#10B981" isAnimationActive={false} />
+          <ReferenceLine y={0} stroke="#6B7280" strokeWidth={1} />
+          <Bar dataKey="impBespaar" name="Import besparing" radius={[2,2,0,0]} isAnimationActive={false}>
+            {chartData.map((m, i) => <Cell key={i} fill={m.impBespaar >= 0 ? '#3B82F6' : '#EF4444'} />)}
+          </Bar>
+          <Bar dataKey="expVerschil" name="Export verschil" radius={[2,2,0,0]} isAnimationActive={false}>
+            {chartData.map((m, i) => <Cell key={i} fill={m.expVerschil >= 0 ? '#10B981' : '#F97316'} />)}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
-      <p className="text-xs text-gray-600 mt-2">2025 = P1 slimme meter · 2026 = Victron VRM · Import = van net · Export = teruggeleverd</p>
+      <p className="text-xs text-gray-600 mt-2">Blauw = import besparing · Groen = meer export · Rood/oranje = slechter dan 2025</p>
     </>
   );
 }
