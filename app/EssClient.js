@@ -9,7 +9,7 @@ function modeColor(m) {
   m = m || '';
   if (m.startsWith('VERKOPEN')) return '#22c55e';
   if (m.startsWith('KOPEN') || m.startsWith('NEG')) return '#3b82f6';
-  if (m.startsWith('VOL')) return '#f59e0b';
+  if (m.startsWith('VOL') || m.startsWith('BALANCEREN') || m.startsWith('ACCU VOL')) return '#f59e0b';
   return '#64748b';
 }
 
@@ -92,7 +92,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
           <div className="rounded-xl p-4 text-white" style={{ background: modeColor(s.mode) }}>
             <div className="text-xs opacity-80">Modus</div>
             <div className="text-base font-bold leading-tight">{s.mode || '—'}</div>
@@ -100,7 +100,14 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           <Card label="Accu SOC" value={s.soc != null ? `${s.soc}%` : '—'} />
           <Card label="Inkoop nu" value={s.buy != null ? `€${Number(s.buy).toFixed(3)}` : '—'} />
           <Card label="Teruglever nu" value={s.sell != null ? `€${Number(s.sell).toFixed(3)}` : '—'} />
+          <Card label="Laatste 100% (balans)" value={s.balansDagen != null ? `${s.balansDagen} dgn geleden` : '—'} />
         </div>
+
+        {s.balansDoel ? (
+          <div className="flex items-center gap-2 mb-6 bg-amber-900/40 border border-amber-700 rounded-xl p-3 text-sm text-amber-200">
+            🔋 Balancering nodig ({s.balansDagen} dagen geen 100%) — gepland op zonnigste dag: <b>{s.balansDoel}</b>
+          </div>
+        ) : <div className="mb-3" />}
 
         <div className="bg-gray-800 rounded-xl p-4 md:p-5">
           <h2 className="font-semibold text-gray-200 mb-3">📊 Voorspelling vandaag + morgen</h2>
