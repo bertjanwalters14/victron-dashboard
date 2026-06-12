@@ -1,6 +1,6 @@
 'use client';
 import { useState, useTransition } from 'react';
-import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { setLaadVanNet, setKeepCharged } from './actions';
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4' };
@@ -40,6 +40,7 @@ function Card({ label, value }) {
 
 export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged }) {
   const data = (forecast || []).map(d => ({ ...d }));
+  const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
   const [aan, setAan] = useState(!!laadVanNet);
   const [vol, setVol] = useState(!!keepCharged);
@@ -119,8 +120,14 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
+              <ReferenceLine yAxisId="prijs" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7}
+                label={{ value: '▼ nu', position: 'top', fill: '#ffffff', fontSize: 11 }} />
               <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)" maxBarSize={16} radius={[3, 3, 0, 0]} fillOpacity={0.9}>
-                {data.map((d, i) => <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'} />)}
+                {data.map((d, i) => (
+                  <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'}
+                    stroke={d.uur === nuUur ? '#ffffff' : 'none'} strokeWidth={d.uur === nuUur ? 2 : 0}
+                    fillOpacity={d.uur === nuUur ? 1 : 0.9} />
+                ))}
               </Bar>
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
