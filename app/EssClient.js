@@ -41,6 +41,7 @@ function Card({ label, value }) {
 export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged }) {
   const data = (forecast || []).map(d => ({ ...d }));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
+  const dataMaxPv = Math.max(1, ...data.map(d => Number(d.pv) || 0)) * 1.15;   // kop voor de zonnelijn
   const s = status || {};
   const [aan, setAan] = useState(!!laadVanNet);
   const [vol, setVol] = useState(!!keepCharged);
@@ -118,6 +119,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
               <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <YAxis yAxisId="pv" hide domain={[0, dataMaxPv]} />
               <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine yAxisId="prijs" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7}
@@ -129,6 +131,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
                     fillOpacity={d.uur === nuUur ? 1 : 0.9} />
                 ))}
               </Bar>
+              <Line yAxisId="pv" type="monotone" dataKey="pv" name="Zon (kWh)" stroke="#fde047" dot={false} strokeWidth={2} strokeDasharray="5 3" />
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
           </ResponsiveContainer>
