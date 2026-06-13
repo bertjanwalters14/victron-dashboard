@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { setLaadVanNet, setKeepCharged } from './actions';
 
-const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#94a3b8', gratis: '#06b6d4' };
+const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4' };
 
 function modeColor(m) {
   m = m || '';
@@ -126,7 +126,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
                 label={{ value: '▼ nu', position: 'top', fill: '#ffffff', fontSize: 11 }} />
               <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)" maxBarSize={16} radius={[3, 3, 0, 0]} fillOpacity={0.9}>
                 {data.map((d, i) => (
-                  <Cell key={i} fill={KLEUR[d.cat] || '#94a3b8'}
+                  <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'}
                     stroke={d.uur === nuUur ? '#ffffff' : 'none'} strokeWidth={d.uur === nuUur ? 2 : 0}
                     fillOpacity={d.uur === nuUur ? 1 : 0.9} />
                 ))}
@@ -138,7 +138,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           <p className="text-xs text-gray-500 mt-2">
             <span style={{ color: '#3b82f6' }}>■</span> kopen ·
             <span style={{ color: '#22c55e' }}> ■</span> verkopen ·
-            <span style={{ color: '#94a3b8' }}> ■</span> normaal ·
+            <span style={{ color: '#f59e0b' }}> ■</span> normaal ·
             <span style={{ color: '#06b6d4' }}> ■</span> gratis (negatief)
           </p>
         </div>
