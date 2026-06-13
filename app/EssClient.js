@@ -39,13 +39,22 @@ function Card({ label, value }) {
 }
 
 export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged }) {
-  const data = (forecast || []).map(d => ({ ...d }));
+  const alle = (forecast || []).map(d => ({ ...d }));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
-  const dataMaxPv = Math.max(1, ...data.map(d => Number(d.pv) || 0)) * 1.15;   // kop voor de zonnelijn
   const s = status || {};
   const [aan, setAan] = useState(!!laadVanNet);
   const [vol, setVol] = useState(!!keepCharged);
+  const [dag, setDag] = useState('vandaag');   // 'vandaag' | 'morgen' | 'alles'
   const [pending, startTransition] = useTransition();
+
+  const heeftMorgen = alle.some(d => String(d.uur).startsWith('+1'));
+  const data = alle.filter(d => {
+    const morgen = String(d.uur).startsWith('+1');
+    if (dag === 'vandaag') return !morgen;
+    if (dag === 'morgen') return morgen;
+    return true;
+  });
+  const dataMaxPv = Math.max(1, ...data.map(d => Number(d.pv) || 0)) * 1.15;   // kop voor de zonnelijn
 
   function toggleLaden() {
     const next = !aan;
@@ -112,8 +121,19 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
         ) : <div className="mb-3" />}
 
         <div className="bg-gray-800 rounded-xl p-4 md:p-5">
-          <h2 className="font-semibold text-gray-200 mb-3">📊 Voorspelling vandaag + morgen</h2>
-          <ResponsiveContainer width="100%" height={340}>
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            <h2 className="font-semibold text-gray-200">📊 Voorspelling</h2>
+            <div className="flex rounded-lg overflow-hidden border border-gray-700 text-sm">
+              {[['vandaag', 'Vandaag'], ['morgen', 'Morgen'], ['alles', 'Alles']].map(([k, label]) => (
+                <button key={k} onClick={() => setDag(k)}
+                  disabled={k === 'morgen' && !heeftMorgen}
+                  className={`px-3 py-1.5 font-medium transition ${dag === k ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} ${k === 'morgen' && !heeftMorgen ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+            <ResponsiveContainer width="100%" height={340}>
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
@@ -134,7 +154,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <Line yAxisId="pv" type="monotone" dataKey="pv" name="Zon (kWh)" stroke="#fde047" dot={false} strokeWidth={2} strokeDasharray="5 3" />
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
-          </ResponsiveContainer>
+            </ResponsiveContainer>
           <p className="text-xs text-gray-500 mt-2">
             <span style={{ color: '#3b82f6' }}>■</span> kopen ·
             <span style={{ color: '#22c55e' }}> ■</span> verkopen ·
