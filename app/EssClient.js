@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { setLaadVanNet, setKeepCharged } from './actions';
 
-const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4' };
+const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4', pvnet: '#c084fc' };
 
 function modeColor(m) {
   m = m || '';
@@ -13,7 +13,7 @@ function modeColor(m) {
   return '#64748b';
 }
 
-const CAT_LABEL = { kopen: 'Kopen', verkopen: 'Verkopen', normaal: 'Zelfverbruik', gratis: 'Gratis laden (negatief)' };
+const CAT_LABEL = { kopen: 'Kopen', verkopen: 'Verkopen', normaal: 'Zelfverbruik', gratis: 'Gratis laden (negatief)', pvnet: 'PV → net (accu vol)' };
 
 function EssTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
@@ -159,7 +159,8 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
             <span style={{ color: '#3b82f6' }}>■</span> kopen ·
             <span style={{ color: '#22c55e' }}> ■</span> verkopen ·
             <span style={{ color: '#f59e0b' }}> ■</span> normaal ·
-            <span style={{ color: '#06b6d4' }}> ■</span> gratis (negatief)
+            <span style={{ color: '#06b6d4' }}> ■</span> gratis (negatief) ·
+            <span style={{ color: '#c084fc' }}> ■</span> PV → net
           </p>
         </div>
       </div>
