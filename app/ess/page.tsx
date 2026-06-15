@@ -1,8 +1,9 @@
 import EssClient from '../EssClient';
 import { neon } from '@neondatabase/serverless';
 
-// Vers genoeg om de live-sturing te volgen, maar niet elke load een query.
-export const revalidate = 60;
+// Altijd vers renderen: elke refresh leest direct de laatste stand uit de DB
+// (voorkomt het "stale-while-revalidate"-effect waarbij je 2x moet verversen).
+export const dynamic = 'force-dynamic';
 
 export default async function EssPage() {
   let status: any = {};
