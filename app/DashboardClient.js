@@ -158,7 +158,7 @@ function ZonTegel({ energieData = [] }) {
 
   useEffect(() => {
     fetchZon();
-    const iv = setInterval(fetchZon, 15 * 60 * 1000);
+    const iv = setInterval(fetchZon, 60 * 60 * 1000);
     return () => clearInterval(iv);
   }, []);
 
@@ -364,7 +364,7 @@ function LiveVandaag() {
 
   useEffect(() => {
     fetchLive();
-    const iv = setInterval(fetchLive, 15 * 60 * 1000);
+    const iv = setInterval(fetchLive, 60 * 60 * 1000);
     return () => clearInterval(iv);
   }, []);
 
@@ -373,7 +373,7 @@ function LiveVandaag() {
       <div>
         <p className="text-green-300 text-sm font-medium">⚡ Vandaag (lopend)</p>
         <p className="text-3xl font-bold text-white mt-1">{loading ? '...' : `€${winst}`}</p>
-        {tijd && <p className="text-green-400 text-xs mt-1">Bijgewerkt om {tijd} · ververst elke 15 min</p>}
+        {tijd && <p className="text-green-400 text-xs mt-1">Bijgewerkt om {tijd} · ververst elk uur</p>}
       </div>
       <button onClick={fetchLive} className="bg-green-700 hover:bg-green-600 text-white text-sm px-3 py-2 rounded-lg transition-colors">
         🔄 Nu verversen
