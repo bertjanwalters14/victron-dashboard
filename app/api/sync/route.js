@@ -3,11 +3,10 @@ import { upsertEnergieData } from '@/lib/db';
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
-// ANWB Energie consumentenprijs — exact zoals geconfigureerd in Victron DESS
-// Leveringsformule én teruglevering: (p + 0.03 + 0.13) * 1.21
-// TODO: bij overstap naar Frank Energie → frankNaarConsumer() gebruiken
+// Consumentenprijs, gelijk aan de opbouw die ess_logic.js (Node-RED) gebruikt voor de sturing.
+// Leveringsformule én teruglevering: (p + 0.0197 + 0.0916) * 1.21
 function anwbPrijs(spot) {
-  return (spot + 0.03 + 0.13) * 1.21;
+  return (spot + 0.0197 + 0.0916) * 1.21;
 }
 
 async function haalSpotPrijzen(datumStr) {
