@@ -66,7 +66,8 @@ export async function GET(request) {
     const PgKwh    = totaalKwh('Pg');
     const PcKwh    = totaalKwh('Pc');
     const PbKwh    = totaalKwh('Pb');
-    const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.01;
+    // Slijtage: €9.000 accu / (8000 cycli x 32 kWh x 0,9025 rendement-gecorrigeerde doorvoer/cyclus) ≈ €0,0185/kWh
+    const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.0185;
     const zonKwhVandaag = +(PgKwh + PcKwh + PbKwh).toFixed(2);
 
     const winst = winstBg + winstBc - kostenGb - accuKosten;

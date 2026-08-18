@@ -90,7 +90,8 @@ async function syncEénDag(datumStr) {
   const PbKwh = totaalKwh('Pb');
   const GcKwh = totaalKwh('Gc');
 
-  const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.01;
+  // Slijtage: €9.000 accu / (8000 cycli x 32 kWh x 0,9025 rendement-gecorrigeerde doorvoer/cyclus) ≈ €0,0185/kWh
+  const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.0185;
   const totaalWinst = winstBg + winstBc - kostenGb - accuKosten;
 
   // Counterfactual: wat zou het resultaat zijn zonder batterij?
