@@ -13,12 +13,12 @@ function getDb() {
 export async function GET() {
   try {
     const sql = getDb();
-    const rows = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN ('laad_van_net', 'keep_charged')`;
+    const rows = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN ('laad_van_net', 'keep_charged', 'verkoop_pauze')`;
     const m = {};
     rows.forEach(r => { m[r.sleutel] = r.waarde; });
-    return Response.json({ success: true, laadVanNet: m['laad_van_net'] === 'true', keepCharged: m['keep_charged'] === 'true' });
+    return Response.json({ success: true, laadVanNet: m['laad_van_net'] === 'true', keepCharged: m['keep_charged'] === 'true', verkoopPauze: m['verkoop_pauze'] === 'true' });
   } catch {
-    return Response.json({ success: true, laadVanNet: false, keepCharged: false });
+    return Response.json({ success: true, laadVanNet: false, keepCharged: false, verkoopPauze: false });
   }
 }
 

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
-import { setLaadVanNet, setKeepCharged } from './actions';
+import { setLaadVanNet, setKeepCharged, setVerkoopPauze } from './actions';
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4', pvnet: '#c084fc' };
 
@@ -38,12 +38,13 @@ function Card({ label, value }) {
   );
 }
 
-export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged }) {
+export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze }) {
   const alle = (forecast || []).map(d => ({ ...d }));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
   const [aan, setAan] = useState(!!laadVanNet);
   const [vol, setVol] = useState(!!keepCharged);
+  const [pauze, setPauze] = useState(!!verkoopPauze);
   const [dag, setDag] = useState('vandaag');   // 'vandaag' | 'morgen' | 'alles'
   const [pending, startTransition] = useTransition();
 
@@ -66,6 +67,12 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
     const next = !vol;
     setVol(next);
     startTransition(() => setKeepCharged(next));
+  }
+
+  function togglePauze() {
+    const next = !pauze;
+    setPauze(next);
+    startTransition(() => setVerkoopPauze(next));
   }
 
   return (
@@ -100,6 +107,19 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           </button>
           <span className="text-xs text-gray-400">
             {vol ? '🔋 Accu wordt vol gehouden (geen verkoop/ontlading) — handel gepauzeerd' : 'Normale handel/zelfverbruik'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3">
+          <button
+            onClick={togglePauze}
+            disabled={pending}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${pauze ? 'bg-red-600 hover:bg-red-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
+          >
+            Verkopen: {pauze ? 'GEPAUZEERD' : 'AAN'}
+          </button>
+          <span className="text-xs text-gray-400">
+            {pauze ? '⏸️ Alleen verkopen stilgezet — laden/zelfverbruik gaan gewoon door' : 'Normaal verkoopgedrag'}
           </span>
         </div>
 
