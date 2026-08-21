@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
-import { setLaadVanNet, setKeepCharged, setVerkoopPauze } from './actions';
+import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule } from './actions';
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4', pvnet: '#c084fc' };
 
@@ -38,7 +38,41 @@ function Card({ label, value }) {
   );
 }
 
-export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze }) {
+// Herbruikbare tijdschema-editor onder een knop: zet de knop automatisch AAN binnen
+// [start, end); buiten dat venster geldt gewoon de handmatige stand van de knop erboven.
+function ScheduleEditor({ scheduleKey, initial }) {
+  const [cfg, setCfg] = useState(initial);
+  const [pending, startTransition] = useTransition();
+
+  function update(patch) {
+    const next = { ...cfg, ...patch };
+    setCfg(next);
+    startTransition(() => setSchedule(scheduleKey, next));
+  }
+
+  return (
+    <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 flex-wrap">
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" checked={cfg.enabled} onChange={e => update({ enabled: e.target.checked })} />
+        Automatisch AAN van
+      </label>
+      <input
+        type="time" value={cfg.start} disabled={!cfg.enabled}
+        onChange={e => update({ start: e.target.value })}
+        className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40"
+      />
+      <span>tot</span>
+      <input
+        type="time" value={cfg.end} disabled={!cfg.enabled}
+        onChange={e => update({ end: e.target.value })}
+        className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40"
+      />
+      {pending && <span className="opacity-60">opslaan…</span>}
+    </div>
+  );
+}
+
+export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze, laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule }) {
   const alle = (forecast || []).map(d => ({ ...d }));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
@@ -84,7 +118,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           Laatste update: {bijgewerkt ? new Date(bijgewerkt).toLocaleString('nl-NL') : '—'}
         </p>
 
-        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3">
+        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
           <button
             onClick={toggleLaden}
             disabled={pending}
@@ -95,9 +129,10 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           <span className="text-xs text-gray-400">
             {aan ? '⚠️ Grid-arbitrage actief (koopt uit net op goedkope uren)' : 'Alleen PV-laden (saldering-vriendelijk)'}
           </span>
+          <ScheduleEditor scheduleKey="laad_van_net" initial={laadVanNetSchedule} />
         </div>
 
-        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3">
+        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
           <button
             onClick={toggleVol}
             disabled={pending}
@@ -108,9 +143,10 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           <span className="text-xs text-gray-400">
             {vol ? '🔋 Accu wordt vol gehouden (geen verkoop/ontlading) — handel gepauzeerd' : 'Normale handel/zelfverbruik'}
           </span>
+          <ScheduleEditor scheduleKey="keep_charged" initial={keepChargedSchedule} />
         </div>
 
-        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3">
+        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
           <button
             onClick={togglePauze}
             disabled={pending}
@@ -121,6 +157,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           <span className="text-xs text-gray-400">
             {pauze ? '⏸️ Alleen verkopen stilgezet — laden/zelfverbruik gaan gewoon door' : 'Normaal verkoopgedrag'}
           </span>
+          <ScheduleEditor scheduleKey="verkoop_pauze" initial={verkoopPauzeSchedule} />
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
