@@ -38,6 +38,24 @@ function Card({ label, value }) {
   );
 }
 
+// Compact 24-uurs-balkje: laat het [start, end)-venster in één oogopslag zien.
+// Loopt het venster over midnacht (bv. 22:00-06:00), dan toont het twee stukjes.
+function DayBlock({ start, end }) {
+  const toMin = (hhmm) => { const [h, m] = String(hhmm).split(':').map(Number); return h * 60 + (m || 0); };
+  const s = toMin(start), e = toMin(end);
+  const pct = (min) => (min / 1440) * 100;
+  const segments = s <= e
+    ? [{ left: pct(s), width: pct(e) - pct(s) }]
+    : [{ left: pct(s), width: pct(1440) - pct(s) }, { left: 0, width: pct(e) }];
+  return (
+    <div className="relative w-36 h-3.5 bg-gray-700 rounded overflow-hidden shrink-0" title={`${start} – ${end}`}>
+      {segments.map((seg, i) => (
+        <div key={i} className="absolute inset-y-0 bg-emerald-500" style={{ left: `${seg.left}%`, width: `${seg.width}%` }} />
+      ))}
+    </div>
+  );
+}
+
 // Herbruikbare tijdschema-editor onder een knop: zet de knop automatisch AAN binnen
 // [start, end); buiten dat venster geldt gewoon de handmatige stand van de knop erboven.
 function ScheduleEditor({ scheduleKey, initial }) {
@@ -67,6 +85,7 @@ function ScheduleEditor({ scheduleKey, initial }) {
         onChange={e => update({ end: e.target.value })}
         className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40"
       />
+      {cfg.enabled && <DayBlock start={cfg.start} end={cfg.end} />}
       {pending && <span className="opacity-60">opslaan…</span>}
     </div>
   );
