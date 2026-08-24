@@ -29,11 +29,17 @@ function EssTooltip({ active, payload }) {
   );
 }
 
-function Card({ label, value }) {
+// Compacte batterij-indicator (telefoon-stijl) voor de SOC, met kleur op ladingsniveau.
+function BatteryBadge({ pct }) {
+  const p = pct != null ? Math.max(0, Math.min(100, Math.round(pct))) : null;
+  const color = p == null ? '#6b7280' : p < 20 ? '#ef4444' : p < 50 ? '#f59e0b' : '#22c55e';
   return (
-    <div className="bg-gray-800 rounded-xl p-4">
-      <div className="text-xs text-gray-400">{label}</div>
-      <div className="text-lg font-bold">{value}</div>
+    <div className="flex items-center gap-1.5" title="Accu SOC">
+      <div className="relative w-7 h-3.5 border-2 border-gray-400 rounded-[2px] p-0.5">
+        <div className="h-full rounded-[1px]" style={{ width: p != null ? `${Math.max(8, p)}%` : '0%', background: color }} />
+        <div className="absolute -right-[3px] top-1/2 -translate-y-1/2 w-[2px] h-[6px] bg-gray-400 rounded-r-sm" />
+      </div>
+      <span className="text-sm font-semibold">{p != null ? `${p}%` : '—'}</span>
     </div>
   );
 }
@@ -188,9 +194,18 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
     <main className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-5xl mx-auto px-4 py-6">
         <a href="/" className="text-sm text-blue-400 hover:text-blue-300">← Terug naar dashboard</a>
-        <h1 className="text-2xl md:text-3xl font-bold mb-1 mt-2">⚡ ESS Sturing (live)</h1>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-1 mt-2">
+          <h1 className="text-2xl md:text-3xl font-bold">⚡ ESS Sturing (live)</h1>
+          <div className="flex items-center gap-2.5">
+            <span className="px-2.5 py-1 rounded-md text-xs font-semibold text-white" style={{ background: modeColor(s.mode) }}>
+              {s.mode || '—'}
+            </span>
+            <BatteryBadge pct={s.soc} />
+          </div>
+        </div>
         <p className="text-gray-500 text-xs mb-4">
           Laatste update: {bijgewerkt ? new Date(bijgewerkt).toLocaleString('nl-NL') : '—'}
+          {s.balansDagen != null ? ` · Laatste 100%: ${s.balansDagen} dgn geleden` : ''}
         </p>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -240,17 +255,6 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
             <div className="text-xs text-gray-400">Verkoop-bodem</div>
             <ReserveEditor initial={reserveSoc} />
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-          <div className="rounded-xl p-4 text-white" style={{ background: modeColor(s.mode) }}>
-            <div className="text-xs opacity-80">Modus</div>
-            <div className="text-base font-bold leading-tight">{s.mode || '—'}</div>
-          </div>
-          <Card label="Accu SOC" value={s.soc != null ? `${s.soc}%` : '—'} />
-          <Card label="Inkoop nu" value={s.buy != null ? `€${Number(s.buy).toFixed(3)}` : '—'} />
-          <Card label="Teruglever nu" value={s.sell != null ? `€${Number(s.sell).toFixed(3)}` : '—'} />
-          <Card label="Laatste 100% (balans)" value={s.balansDagen != null ? `${s.balansDagen} dgn geleden` : '—'} />
         </div>
 
         {s.balansDoel ? (
