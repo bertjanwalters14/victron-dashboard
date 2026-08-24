@@ -58,14 +58,26 @@ function DayBlock({ start, end }) {
 
 // Herbruikbare tijdschema-editor onder een knop: zet de knop automatisch AAN binnen
 // [start, end); buiten dat venster geldt gewoon de handmatige stand van de knop erboven.
+// Standaard ingeklapt (compact linkje) tenzij er al een schema actief staat -- dan direct
+// zichtbaar, zodat een lopend schema nooit per ongeluk uit het oog verdwijnt.
 function ScheduleEditor({ scheduleKey, initial }) {
   const [cfg, setCfg] = useState(initial);
+  const [open, setOpen] = useState(!!initial.enabled);
   const [pending, startTransition] = useTransition();
 
   function update(patch) {
     const next = { ...cfg, ...patch };
     setCfg(next);
     startTransition(() => setSchedule(scheduleKey, next));
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="text-xs text-gray-400 hover:text-gray-200 underline decoration-dotted decoration-gray-600">
+        ⏰ {cfg.enabled ? `Schema: ${cfg.start}–${cfg.end}` : 'Schema instellen'}
+      </button>
+    );
   }
 
   return (
@@ -87,17 +99,31 @@ function ScheduleEditor({ scheduleKey, initial }) {
       />
       {cfg.enabled && <DayBlock start={cfg.start} end={cfg.end} />}
       {pending && <span className="opacity-60">opslaan…</span>}
+      <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300" title="Inklappen">✕</button>
     </div>
   );
 }
 
 // Verkoop-bodem (RESERVE_SOC): normaal 25%, lager tijdens bv. vakantie (minder huisverbruik nodig als
 // nachtbuffer, dus mag de accu verder doorverkopen). Sleepbalk committeert pas bij loslaten (niet per
-// pixel tijdens het slepen) om de DB niet met een schrijf-per-frame te bestoken.
+// pixel tijdens het slepen) om de DB niet met een schrijf-per-frame te bestoken. Standaard ingeklapt,
+// behalve als er al een niet-standaard bodem staat (dan is het waarschijnlijk relevant om te zien).
 function ReserveEditor({ initial }) {
   const [pct, setPct] = useState(initial);
+  const [open, setOpen] = useState(initial !== 25);
   const [pending, startTransition] = useTransition();
   const commit = (v) => startTransition(() => setReserveSoc(v));
+
+  if (!open) {
+    return (
+      <div className="mb-5">
+        <button type="button" onClick={() => setOpen(true)}
+          className="text-xs text-gray-400 hover:text-gray-200 underline decoration-dotted decoration-gray-600">
+          🔋 Verkoop-bodem: {pct}% (wijzigen)
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
@@ -114,6 +140,7 @@ function ReserveEditor({ initial }) {
         Normaal 25% — lager (bv. vakantie) verkoopt verder door, hoger houdt meer buffer aan
       </span>
       {pending && <span className="opacity-60 text-xs">opslaan…</span>}
+      <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300" title="Inklappen">✕</button>
     </div>
   );
 }
