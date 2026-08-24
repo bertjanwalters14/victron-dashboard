@@ -5,22 +5,26 @@ const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-04');
 
 const INFO = {
-  winst:        'Het totale bedrag dat de batterij heeft opgeleverd sinds installatie. Dit groeit elke dag automatisch.',
-  roi:          'Hoeveel procent van je €11.252 investering je al hebt terugverdiend. Stijgt naarmate de batterij meer oplevert.',
-  dagwinst:     'Het gemiddelde bedrag dat de batterij per dag oplevert. Wordt nauwkeuriger naarmate er meer data beschikbaar is.',
-  terugverdien: 'De geschatte datum waarop je je volledige investering van €11.252 hebt terugverdiend. Gebaseerd op de huidige gemiddelde dagwinst.',
+  meerwaarde:   'Wat de batterij écht heeft opgeleverd t.o.v. geen batterij: exportopbrengst + vermeden inkoop − laadkosten − slijtage, min de gemiste exportwaarde van zon die de accu in ging i.p.v. het net op (gewaardeerd tegen de kale marktprijs, zonder opslag/belasting/BTW — dat is geen netstroom-transactie). Dit groeit elke dag automatisch en is leidend voor ROI en terugverdientijd hieronder.',
+  roi:          'Hoeveel procent van je €11.252 investering je al hebt terugverdiend, op basis van de batterij-meerwaarde. Stijgt naarmate de batterij meer oplevert.',
+  dagwinst:     'Het gemiddelde bedrag dat de batterij per dag écht oplevert (batterij-meerwaarde). Wordt nauwkeuriger naarmate er meer data beschikbaar is.',
+  terugverdien: 'De geschatte datum waarop je je volledige investering van €11.252 hebt terugverdiend. Gebaseerd op de huidige gemiddelde dagwinst (batterij-meerwaarde).',
 };
 
 export default function DashboardClient({ data }) {
+  // totaalWinst = ruwe batterij-actie-waarde (blijft in de DB, o.a. voor de nachtelijke sync), maar is
+  // niet meer leidend op het dashboard: totaalMeerwaarde (t.o.v. geen batterij) is de eerlijkere maatstaf
+  // en drijft ROI/dagwinst/terugverdientijd.
   const totaalWinst        = data.reduce((s, d) => s + parseFloat(d.winst_euro || 0), 0);
+  const totaalMeerwaarde   = data.reduce((s, d) => s + parseFloat(d.bat_meerwaarde ?? d.winst_euro ?? 0), 0);
   const aantalDagenData    = data.length;
-  const gemDagwinst        = aantalDagenData > 0 ? totaalWinst / aantalDagenData : 0;
+  const gemDagwinst        = aantalDagenData > 0 ? totaalMeerwaarde / aantalDagenData : 0;
   const dagenTerugverdiend = gemDagwinst > 0 ? BATTERIJ_KOSTEN / gemDagwinst : null;
   const terugverdienDatum  = dagenTerugverdiend
     ? new Date(INSTALLATIE_DATUM.getTime() + dagenTerugverdiend * 86400000)
     : null;
-  const roiPct = (totaalWinst / BATTERIJ_KOSTEN) * 100;
-  const gisterenWinst = aantalDagenData > 0 ? parseFloat(data[aantalDagenData - 1].winst_euro || 0) : null;
+  const roiPct = (totaalMeerwaarde / BATTERIJ_KOSTEN) * 100;
+  const gisterenMeerwaarde = aantalDagenData > 0 ? parseFloat(data[aantalDagenData - 1].bat_meerwaarde ?? data[aantalDagenData - 1].winst_euro ?? 0) : null;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -37,11 +41,15 @@ export default function DashboardClient({ data }) {
           </div>
         </div>
 
-        <LiveVandaag gisterenWinst={gisterenWinst} />
+        <LiveVandaag gisterenWinst={gisterenMeerwaarde} />
 
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-5">
-            <Card label="Totale winst"  value={`€${totaalWinst.toFixed(2)}`} color="text-green-400"  sub="sinds installatie" info={INFO.winst} />
+            <Card
+              label="Batterij-meerwaarde" value={`€${totaalMeerwaarde.toFixed(2)}`} color="text-green-400"
+              sub="t.o.v. geen batterij, sinds installatie"
+              info={INFO.meerwaarde}
+            />
             <Card label="ROI"           value={`${roiPct.toFixed(2)}%`}      color="text-blue-400"   sub="van €11.252" info={INFO.roi} />
             <Card label="Gem. dagwinst" value={`€${gemDagwinst.toFixed(2)}`} color="text-yellow-400" sub={`over ${aantalDagenData} dag${aantalDagenData !== 1 ? 'en' : ''} data`} info={INFO.dagwinst} />
             <Card
@@ -55,7 +63,7 @@ export default function DashboardClient({ data }) {
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <span className="text-gray-500 text-xs">Terugverdien-voortgang</span>
-              <span className="text-gray-300 text-xs font-medium">€{totaalWinst.toFixed(0)} / €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')}</span>
+              <span className="text-gray-300 text-xs font-medium">€{totaalMeerwaarde.toFixed(0)} / €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')}</span>
             </div>
             <div className="w-full bg-gray-700 rounded-full h-2.5">
               <div className="bg-gradient-to-r from-green-500 to-emerald-400 h-2.5 rounded-full transition-all duration-500" style={{ width: `${Math.min(roiPct, 100)}%` }} />

@@ -51,12 +51,17 @@ async function syncEénDag(datumStr) {
   // EPEX spotprijzen via EnergyZero
   const spotPrijzen = await haalSpotPrijzen(datumStr);
 
-  // Map: uur-timestamp (ms) → all-in ANWB prijs
+  // Map: uur-timestamp (ms) → all-in ANWB prijs, én de KALE marktprijs (geen opslag/belasting/BTW).
+  // De kale prijs is nodig voor Pb's opportunity cost (zie batMeerwaarde hieronder): zon die de accu
+  // in gaat is geen netstroom-transactie, dus geen retail-opslag van toepassing -- alleen wat die
+  // kWh zelf op de markt waard was.
   const prijsPerUur = {};
+  const kalePrijsPerUur = {};
   for (const p of spotPrijzen) {
     const d = new Date(p.readingDate);
     d.setMinutes(0, 0, 0);
     prijsPerUur[d.getTime()] = anwbPrijs(parseFloat(p.price));
+    kalePrijsPerUur[d.getTime()] = parseFloat(p.price);
   }
 
   function vindPrijs(tsMs) {
@@ -64,9 +69,17 @@ async function syncEénDag(datumStr) {
     d.setMinutes(0, 0, 0);
     return prijsPerUur[d.getTime()] ?? 0.28;
   }
+  function vindKalePrijs(tsMs) {
+    const d = new Date(tsMs);
+    d.setMinutes(0, 0, 0);
+    return kalePrijsPerUur[d.getTime()] ?? 0;
+  }
 
   function berekenSom(veld) {
     return (records[veld] || []).reduce((som, [ts, kwh]) => som + kwh * vindPrijs(ts), 0);
+  }
+  function berekenSomKaal(veld) {
+    return (records[veld] || []).reduce((som, [ts, kwh]) => som + kwh * vindKalePrijs(ts), 0);
   }
 
   function totaalKwh(veld) {
@@ -76,8 +89,6 @@ async function syncEénDag(datumStr) {
   const winstBg  = berekenSom('Bg');
   const winstBc  = berekenSom('Bc');
   const winstPc  = berekenSom('Pc');
-  const winstPb  = berekenSom('Pb');
-  const winstPg  = berekenSom('Pg');
   const kostenGc = berekenSom('Gc');
   const kostenGb = berekenSom('Gb');
 
@@ -93,12 +104,13 @@ async function syncEénDag(datumStr) {
   const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.0185;
   const totaalWinst = winstBg + winstBc - kostenGb - accuKosten;
 
-  // Counterfactual: wat zou het resultaat zijn zonder batterij?
-  // - Pb gaat naar net (Pg) i.p.v. naar batterij — zelfde uur, zelfde prijs
-  // - Bc moet van net komen (Gc) i.p.v. van batterij — zelfde uur, zelfde prijs
-  // - Geen Gb (geen laden van net) en geen Bg (geen export van batterij)
-  const winstZonderBat = winstPg + winstPb + winstPc - kostenGc - winstBc;
-  const batMeerwaarde  = totaalWinst - winstZonderBat;
+  // Meerwaarde t.o.v. geen accu: exportopbrengst (Bg) + vermeden inkoop (Bc) - laadkosten (Gb) - slijtage,
+  // MINUS de gemiste exportwaarde van de zon die nu de accu in ging (Pb) i.p.v. het net op. Die Pb-term
+  // is bewust de KALE marktprijs (geen opslag/belasting/BTW): het is geen netstroom-transactie, dus geen
+  // retail-opslag van toepassing. (Eerdere versie vergeleek totaalWinst met een apart "winstZonderBat"-
+  // totaal van een andere scope, wat Bc dubbel liet meetellen -- deze rechtstreekse formule niet.)
+  const winstPbKaal   = berekenSomKaal('Pb');
+  const batMeerwaarde = winstBg + winstBc - kostenGb - winstPbKaal - accuKosten;
 
   await upsertEnergieData({
     datum:           datumStr,
@@ -125,7 +137,7 @@ async function syncEénDag(datumStr) {
     kostenGb:      kostenGb.toFixed(2),
     accuKosten:    accuKosten.toFixed(2),
     winst:         totaalWinst.toFixed(2),
-    winstZonderBat: winstZonderBat.toFixed(2),
+    winstPbKaal:   winstPbKaal.toFixed(2),
     batMeerwaarde: batMeerwaarde.toFixed(2),
   };
 }
