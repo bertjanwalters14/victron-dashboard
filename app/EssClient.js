@@ -56,13 +56,31 @@ function DayBlock({ start, end }) {
   );
 }
 
-// Herbruikbare tijdschema-editor onder een knop: zet de knop automatisch AAN binnen
-// [start, end); buiten dat venster geldt gewoon de handmatige stand van de knop erboven.
-// Standaard ingeklapt (compact linkje) tenzij er al een schema actief staat -- dan direct
-// zichtbaar, zodat een lopend schema nooit per ongeluk uit het oog verdwijnt.
+// Kleine dropdown die over de kaart heen zweeft (absolute) i.p.v. de pagina naar onder te duwen.
+// De trigger blijft altijd zichtbaar zodat een actief schema/afwijkende bodem in één oogopslag
+// te zien is, zonder dat je hoeft te klikken.
+function Dropdown({ trigger, open, onToggle, children }) {
+  return (
+    <div className="relative">
+      <button type="button" onClick={onToggle}
+        className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1">
+        {trigger}
+      </button>
+      {open && (
+        <div className="absolute z-20 top-full left-0 mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg p-3 shadow-xl text-xs text-gray-300">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Tijdschema-dropdown onder een knop: zet de knop automatisch AAN binnen [start, end); buiten dat
+// venster geldt gewoon de handmatige stand van de knop erboven. De trigger toont het venster zelf
+// (bv. "12:00–18:00") als het schema aan staat, dus je ziet dat al zonder open te klikken.
 function ScheduleEditor({ scheduleKey, initial }) {
   const [cfg, setCfg] = useState(initial);
-  const [open, setOpen] = useState(!!initial.enabled);
+  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function update(patch) {
@@ -71,77 +89,61 @@ function ScheduleEditor({ scheduleKey, initial }) {
     startTransition(() => setSchedule(scheduleKey, next));
   }
 
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)}
-        className="text-xs text-gray-400 hover:text-gray-200 underline decoration-dotted decoration-gray-600">
-        ⏰ {cfg.enabled ? `Schema: ${cfg.start}–${cfg.end}` : 'Schema instellen'}
-      </button>
-    );
-  }
-
   return (
-    <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 flex-wrap">
-      <label className="flex items-center gap-1.5 cursor-pointer">
+    <Dropdown open={open} onToggle={() => setOpen(o => !o)}
+      trigger={<>⏰ {cfg.enabled ? `${cfg.start}–${cfg.end}` : 'Schema'}</>}>
+      <label className="flex items-center gap-1.5 cursor-pointer mb-2">
         <input type="checkbox" checked={cfg.enabled} onChange={e => update({ enabled: e.target.checked })} />
         Automatisch AAN van
       </label>
-      <input
-        type="time" value={cfg.start} disabled={!cfg.enabled}
-        onChange={e => update({ start: e.target.value })}
-        className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40"
-      />
-      <span>tot</span>
-      <input
-        type="time" value={cfg.end} disabled={!cfg.enabled}
-        onChange={e => update({ end: e.target.value })}
-        className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40"
-      />
+      <div className="flex items-center gap-2 mb-2">
+        <input
+          type="time" value={cfg.start} disabled={!cfg.enabled}
+          onChange={e => update({ start: e.target.value })}
+          className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40 w-full"
+        />
+        <span>tot</span>
+        <input
+          type="time" value={cfg.end} disabled={!cfg.enabled}
+          onChange={e => update({ end: e.target.value })}
+          className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40 w-full"
+        />
+      </div>
       {cfg.enabled && <DayBlock start={cfg.start} end={cfg.end} />}
-      {pending && <span className="opacity-60">opslaan…</span>}
-      <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300" title="Inklappen">✕</button>
-    </div>
+      <div className="flex items-center justify-between mt-2">
+        {pending && <span className="opacity-60">opslaan…</span>}
+        <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300 ml-auto">Sluiten</button>
+      </div>
+    </Dropdown>
   );
 }
 
 // Verkoop-bodem (RESERVE_SOC): normaal 25%, lager tijdens bv. vakantie (minder huisverbruik nodig als
 // nachtbuffer, dus mag de accu verder doorverkopen). Sleepbalk committeert pas bij loslaten (niet per
-// pixel tijdens het slepen) om de DB niet met een schrijf-per-frame te bestoken. Standaard ingeklapt,
-// behalve als er al een niet-standaard bodem staat (dan is het waarschijnlijk relevant om te zien).
+// pixel tijdens het slepen) om de DB niet met een schrijf-per-frame te bestoken.
 function ReserveEditor({ initial }) {
   const [pct, setPct] = useState(initial);
-  const [open, setOpen] = useState(initial !== 25);
+  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const commit = (v) => startTransition(() => setReserveSoc(v));
 
-  if (!open) {
-    return (
-      <div className="mb-5">
-        <button type="button" onClick={() => setOpen(true)}
-          className="text-xs text-gray-400 hover:text-gray-200 underline decoration-dotted decoration-gray-600">
-          🔋 Verkoop-bodem: {pct}% (wijzigen)
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
-      <div className="text-sm font-semibold w-44">Verkoop-bodem: {pct}%</div>
+    <Dropdown open={open} onToggle={() => setOpen(o => !o)} trigger={<>🔋 {pct}%</>}>
+      <div className="text-sm font-semibold text-white mb-1">Verkoop-bodem: {pct}%</div>
       <input
         type="range" min={10} max={40} step={1} value={pct}
         onChange={e => setPct(Number(e.target.value))}
         onMouseUp={e => commit(Number(e.target.value))}
         onTouchEnd={e => commit(Number(e.target.value))}
         onKeyUp={e => commit(Number(e.target.value))}
-        className="w-48 accent-emerald-500"
+        className="w-full accent-emerald-500 mb-1"
       />
-      <span className="text-xs text-gray-400">
-        Normaal 25% — lager (bv. vakantie) verkoopt verder door, hoger houdt meer buffer aan
-      </span>
-      {pending && <span className="opacity-60 text-xs">opslaan…</span>}
-      <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300" title="Inklappen">✕</button>
-    </div>
+      <div>Normaal 25% — lager (bv. vakantie) verkoopt verder door, hoger houdt meer buffer aan</div>
+      <div className="flex items-center justify-between mt-2">
+        {pending && <span className="opacity-60">opslaan…</span>}
+        <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300 ml-auto">Sluiten</button>
+      </div>
+    </Dropdown>
   );
 }
 
@@ -191,49 +193,54 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           Laatste update: {bijgewerkt ? new Date(bijgewerkt).toLocaleString('nl-NL') : '—'}
         </p>
 
-        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
-          <button
-            onClick={toggleLaden}
-            disabled={pending}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${aan ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
-          >
-            Laden uit net: {aan ? 'AAN' : 'UIT'}
-          </button>
-          <span className="text-xs text-gray-400">
-            {aan ? '⚠️ Grid-arbitrage actief (koopt uit net op goedkope uren)' : 'Alleen PV-laden (saldering-vriendelijk)'}
-          </span>
-          <ScheduleEditor scheduleKey="laad_van_net" initial={laadVanNetSchedule} />
-        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
+            <button
+              onClick={toggleLaden}
+              disabled={pending}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${aan ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
+            >
+              Laden uit net: {aan ? 'AAN' : 'UIT'}
+            </button>
+            <span className="text-xs text-gray-400" title="Grid-arbitrage actief (koopt uit net op goedkope uren)">
+              {aan ? '⚠️ Grid-arbitrage' : 'Alleen PV-laden'}
+            </span>
+            <ScheduleEditor scheduleKey="laad_van_net" initial={laadVanNetSchedule} />
+          </div>
 
-        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
-          <button
-            onClick={toggleVol}
-            disabled={pending}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${vol ? 'bg-amber-500 hover:bg-amber-400 text-black' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
-          >
-            Accu altijd vol: {vol ? 'AAN' : 'UIT'}
-          </button>
-          <span className="text-xs text-gray-400">
-            {vol ? '🔋 Accu wordt vol gehouden (geen verkoop/ontlading) — handel gepauzeerd' : 'Normale handel/zelfverbruik'}
-          </span>
-          <ScheduleEditor scheduleKey="keep_charged" initial={keepChargedSchedule} />
-        </div>
+          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
+            <button
+              onClick={toggleVol}
+              disabled={pending}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${vol ? 'bg-amber-500 hover:bg-amber-400 text-black' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
+            >
+              Accu altijd vol: {vol ? 'AAN' : 'UIT'}
+            </button>
+            <span className="text-xs text-gray-400" title="Accu wordt vol gehouden (geen verkoop/ontlading) — handel gepauzeerd">
+              {vol ? '🔋 Vol gehouden' : 'Normale handel'}
+            </span>
+            <ScheduleEditor scheduleKey="keep_charged" initial={keepChargedSchedule} />
+          </div>
 
-        <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
-          <button
-            onClick={togglePauze}
-            disabled={pending}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${pauze ? 'bg-red-600 hover:bg-red-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
-          >
-            Verkopen: {pauze ? 'GEPAUZEERD' : 'AAN'}
-          </button>
-          <span className="text-xs text-gray-400">
-            {pauze ? '⏸️ Alleen verkopen stilgezet — laden/zelfverbruik gaan gewoon door' : 'Normaal verkoopgedrag'}
-          </span>
-          <ScheduleEditor scheduleKey="verkoop_pauze" initial={verkoopPauzeSchedule} />
-        </div>
+          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
+            <button
+              onClick={togglePauze}
+              disabled={pending}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${pauze ? 'bg-red-600 hover:bg-red-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
+            >
+              Verkopen: {pauze ? 'GEPAUZEERD' : 'AAN'}
+            </button>
+            <span className="text-xs text-gray-400" title="Alleen verkopen stilgezet — laden/zelfverbruik gaan gewoon door">
+              {pauze ? '⏸️ Stilgezet' : 'Normaal gedrag'}
+            </span>
+            <ScheduleEditor scheduleKey="verkoop_pauze" initial={verkoopPauzeSchedule} />
+          </div>
 
-        <ReserveEditor initial={reserveSoc} />
+          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
+            <div className="text-xs text-gray-400">Verkoop-bodem</div>
+            <ReserveEditor initial={reserveSoc} />
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
           <div className="rounded-xl p-4 text-white" style={{ background: modeColor(s.mode) }}>
