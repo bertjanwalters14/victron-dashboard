@@ -26,7 +26,7 @@ export default function DashboardClient({ data }) {
     <main className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-5xl mx-auto px-4 py-6 md:py-10">
 
-        <div className="flex justify-between items-start mb-8">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
             <p className="text-gray-400 mt-1">Installatie: 4 april 2026 · Investering: €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')} <span className="text-green-600 text-xs">(incl. BTW teruggave)</span></p>
