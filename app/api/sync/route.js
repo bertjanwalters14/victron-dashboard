@@ -5,6 +5,7 @@ const TOKEN   = process.env.VICTRON_API_TOKEN;
 
 // Consumentenprijs, gelijk aan de opbouw die ess_logic.js (Node-RED) gebruikt voor de sturing.
 // Leveringsformule én teruglevering: (p + 0.0197 + 0.0916) * 1.21
+// Naam is niet willekeurig: ANWB Energie is de daadwerkelijke leverancier.
 function anwbPrijs(spot) {
   return (spot + 0.0197 + 0.0916) * 1.21;
 }

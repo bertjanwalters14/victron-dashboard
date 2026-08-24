@@ -1,6 +1,7 @@
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
+// Consumentenprijs, zelfde opbouw als anwbPrijs() in /api/sync -- ANWB Energie is de leverancier.
 function victronPrijs(spot) {
   return (spot + 0.0197 + 0.0916) * 1.21;
 }
