@@ -20,6 +20,7 @@ export default function DashboardClient({ data }) {
     ? new Date(INSTALLATIE_DATUM.getTime() + dagenTerugverdiend * 86400000)
     : null;
   const roiPct = (totaalWinst / BATTERIJ_KOSTEN) * 100;
+  const gisterenWinst = aantalDagenData > 0 ? parseFloat(data[aantalDagenData - 1].winst_euro || 0) : null;
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -30,13 +31,13 @@ export default function DashboardClient({ data }) {
             <h1 className="text-3xl md:text-4xl font-bold">⚡ Victron Batterij ROI</h1>
             <p className="text-gray-400 mt-1">Installatie: 4 april 2026 · Investering: €{BATTERIJ_KOSTEN.toLocaleString('nl-NL')} <span className="text-green-600 text-xs">(incl. BTW teruggave)</span></p>
           </div>
-          <div className="flex flex-col gap-2 items-end">
-            <a href="/ess" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold whitespace-nowrap">⚡ Live sturing →</a>
+          <div className="flex items-center gap-2">
             <RefreshButton />
+            <a href="/ess" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold whitespace-nowrap">⚡ Live sturing →</a>
           </div>
         </div>
 
-        <LiveVandaag />
+        <LiveVandaag gisterenWinst={gisterenWinst} />
 
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-5">
@@ -99,7 +100,7 @@ function Card({ label, value, color, sub, info }) {
   );
 }
 
-function LiveVandaag() {
+function LiveVandaag({ gisterenWinst }) {
   const [winst, setWinst]     = useState(null);
   const [tijd, setTijd]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -119,12 +120,17 @@ function LiveVandaag() {
     return () => clearInterval(iv);
   }, []);
 
+  const notes = [
+    tijd ? `Bijgewerkt om ${tijd} · ververst elk uur` : null,
+    gisterenWinst != null ? `Gisteren: €${gisterenWinst.toFixed(2)}` : null,
+  ].filter(Boolean).join(' · ');
+
   return (
     <div className="bg-gradient-to-r from-green-900 to-emerald-800 rounded-xl p-5 mb-6 flex justify-between items-center">
       <div>
         <p className="text-green-300 text-sm font-medium">⚡ Vandaag (lopend)</p>
         <p className="text-3xl font-bold text-white mt-1">{loading ? '...' : `€${winst}`}</p>
-        {tijd && <p className="text-green-400 text-xs mt-1">Bijgewerkt om {tijd} · ververst elk uur</p>}
+        {notes && <p className="text-green-400 text-xs mt-1">{notes}</p>}
       </div>
       <button onClick={fetchLive} className="bg-green-700 hover:bg-green-600 text-white text-sm px-3 py-2 rounded-lg transition-colors">
         🔄 Nu verversen
