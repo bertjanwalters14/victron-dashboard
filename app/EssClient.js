@@ -1,7 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
-import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule } from './actions';
+import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4', pvnet: '#c084fc' };
 
@@ -91,7 +91,34 @@ function ScheduleEditor({ scheduleKey, initial }) {
   );
 }
 
-export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze, laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule }) {
+// Verkoop-bodem (RESERVE_SOC): normaal 25%, lager tijdens bv. vakantie (minder huisverbruik nodig als
+// nachtbuffer, dus mag de accu verder doorverkopen). Sleepbalk committeert pas bij loslaten (niet per
+// pixel tijdens het slepen) om de DB niet met een schrijf-per-frame te bestoken.
+function ReserveEditor({ initial }) {
+  const [pct, setPct] = useState(initial);
+  const [pending, startTransition] = useTransition();
+  const commit = (v) => startTransition(() => setReserveSoc(v));
+
+  return (
+    <div className="flex items-center gap-3 mb-5 bg-gray-800 rounded-xl p-3 flex-wrap">
+      <div className="text-sm font-semibold w-44">Verkoop-bodem: {pct}%</div>
+      <input
+        type="range" min={10} max={40} step={1} value={pct}
+        onChange={e => setPct(Number(e.target.value))}
+        onMouseUp={e => commit(Number(e.target.value))}
+        onTouchEnd={e => commit(Number(e.target.value))}
+        onKeyUp={e => commit(Number(e.target.value))}
+        className="w-48 accent-emerald-500"
+      />
+      <span className="text-xs text-gray-400">
+        Normaal 25% — lager (bv. vakantie) verkoopt verder door, hoger houdt meer buffer aan
+      </span>
+      {pending && <span className="opacity-60 text-xs">opslaan…</span>}
+    </div>
+  );
+}
+
+export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze, laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
   const alle = (forecast || []).map(d => ({ ...d }));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
@@ -178,6 +205,8 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           </span>
           <ScheduleEditor scheduleKey="verkoop_pauze" initial={verkoopPauzeSchedule} />
         </div>
+
+        <ReserveEditor initial={reserveSoc} />
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
           <div className="rounded-xl p-4 text-white" style={{ background: modeColor(s.mode) }}>

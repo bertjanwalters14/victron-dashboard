@@ -16,7 +16,7 @@ export async function GET() {
   try {
     const sql = getDb();
     const rows = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN (
-      'laad_van_net', 'keep_charged', 'verkoop_pauze',
+      'laad_van_net', 'keep_charged', 'verkoop_pauze', 'reserve_soc',
       'laad_van_net_schedule', 'keep_charged_schedule', 'verkoop_pauze_schedule'
     )`;
     const m = {};
@@ -24,6 +24,8 @@ export async function GET() {
     const laadVanNetSchedule = parseSchedule(m['laad_van_net_schedule']);
     const keepChargedSchedule = parseSchedule(m['keep_charged_schedule']);
     const verkoopPauzeSchedule = parseSchedule(m['verkoop_pauze_schedule']);
+    const reserveSocRaw = Number(m['reserve_soc']);
+    const reserveSoc = (reserveSocRaw >= 10 && reserveSocRaw <= 40) ? reserveSocRaw : 25;
     return Response.json({
       success: true,
       laadVanNet: effectiveState(m['laad_van_net'] === 'true', laadVanNetSchedule),
@@ -33,6 +35,7 @@ export async function GET() {
       keepChargedHandmatig: m['keep_charged'] === 'true',
       verkoopPauzeHandmatig: m['verkoop_pauze'] === 'true',
       laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule,
+      reserveSoc,
     });
   } catch {
     const off = { enabled: false, start: '12:00', end: '18:00' };
@@ -40,6 +43,7 @@ export async function GET() {
       success: true, laadVanNet: false, keepCharged: false, verkoopPauze: false,
       laadVanNetHandmatig: false, keepChargedHandmatig: false, verkoopPauzeHandmatig: false,
       laadVanNetSchedule: off, keepChargedSchedule: off, verkoopPauzeSchedule: off,
+      reserveSoc: 25,
     });
   }
 }

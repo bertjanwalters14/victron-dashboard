@@ -16,6 +16,7 @@ export default async function EssPage() {
   let laadVanNetSchedule = parseSchedule(null);
   let keepChargedSchedule = parseSchedule(null);
   let verkoopPauzeSchedule = parseSchedule(null);
+  let reserveSoc = 25;
 
   try {
     const sql = neon(process.env.DATABASE_URL!);
@@ -26,7 +27,7 @@ export default async function EssPage() {
       bijgewerkt = rows[0].bijgewerkt as any;
     }
     const inst = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN (
-      'laad_van_net', 'keep_charged', 'verkoop_pauze',
+      'laad_van_net', 'keep_charged', 'verkoop_pauze', 'reserve_soc',
       'laad_van_net_schedule', 'keep_charged_schedule', 'verkoop_pauze_schedule'
     )`;
     const m: any = {};
@@ -37,6 +38,8 @@ export default async function EssPage() {
     laadVanNetSchedule = parseSchedule(m['laad_van_net_schedule']);
     keepChargedSchedule = parseSchedule(m['keep_charged_schedule']);
     verkoopPauzeSchedule = parseSchedule(m['verkoop_pauze_schedule']);
+    const reserveSocRaw = Number(m['reserve_soc']);
+    reserveSoc = (reserveSocRaw >= 10 && reserveSocRaw <= 40) ? reserveSocRaw : 25;
   } catch (e) {
     console.error('ESS live DB error:', e);
   }
@@ -45,5 +48,6 @@ export default async function EssPage() {
     status={status} forecast={forecast} bijgewerkt={bijgewerkt}
     laadVanNet={laadVanNet} keepCharged={keepCharged} verkoopPauze={verkoopPauze}
     laadVanNetSchedule={laadVanNetSchedule} keepChargedSchedule={keepChargedSchedule} verkoopPauzeSchedule={verkoopPauzeSchedule}
+    reserveSoc={reserveSoc}
   />;
 }

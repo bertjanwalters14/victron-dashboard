@@ -42,6 +42,22 @@ export async function setVerkoopPauze(aan) {
   return aan;
 }
 
+// Server action: stelt de verkoop-bodem in (RESERVE_SOC in ess_logic.js, standaard 25%). Lager tijdens
+// bv. vakantie: minder huisverbruik nodig als nachtbuffer, dus mag verder doorverkopen. Geklemd 10-40
+// (zelfde grenzen als de UI-slider en de fallback in ess_logic.js) zodat een rare waarde nooit doorkomt.
+export async function setReserveSoc(pct) {
+  const sql = neon(process.env.DATABASE_URL);
+  const v = Math.max(10, Math.min(40, Math.round(Number(pct)) || 25));
+  await sql`
+    INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
+    VALUES ('reserve_soc', ${String(v)}, NOW())
+    ON CONFLICT (sleutel) DO UPDATE SET
+      waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
+  `;
+  revalidatePath('/ess');
+  return v;
+}
+
 // Server action: slaat een tijdschema op voor één van de drie knoppen. Het schema kan de
 // knop alleen tijdelijk AANzetten binnen [start, end) -- buiten dat venster geldt de
 // handmatige stand gewoon (zie lib/schedule.js voor de logica die dit toepast).
