@@ -12,5 +12,7 @@ export default async function Page() {
   } catch (e) {
     console.error('DB error:', e);
   }
+  // SOC komt NIET uit deze server-component (die cachet 6 uur) maar wordt client-side vers
+  // opgehaald in DashboardClient, zodat de rest van de pagina de cache-bescherming behoudt.
   return <DashboardClient data={data} />;
 }

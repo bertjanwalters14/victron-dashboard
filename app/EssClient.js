@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
+import BatteryBadge from './BatteryBadge';
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4', pvnet: '#c084fc' };
 
@@ -25,21 +26,6 @@ function EssTooltip({ active, payload }) {
       <div style={{ color: '#fde047' }}>Zon: {Number(d.pv).toFixed(1)} kWh</div>
       <div style={{ color: '#a855f7' }}>SOC: {d.soc}%</div>
       <div style={{ color: '#9ca3af', marginTop: 2 }}>{CAT_LABEL[d.cat] || d.cat}</div>
-    </div>
-  );
-}
-
-// Compacte batterij-indicator (telefoon-stijl) voor de SOC, met kleur op ladingsniveau.
-function BatteryBadge({ pct }) {
-  const p = pct != null ? Math.max(0, Math.min(100, Math.round(pct))) : null;
-  const color = p == null ? '#6b7280' : p < 20 ? '#ef4444' : p < 50 ? '#f59e0b' : '#22c55e';
-  return (
-    <div className="flex items-center gap-1.5" title="Accu SOC">
-      <div className="relative w-7 h-3.5 border-2 border-gray-400 rounded-[2px] p-0.5">
-        <div className="h-full rounded-[1px]" style={{ width: p != null ? `${Math.max(8, p)}%` : '0%', background: color }} />
-        <div className="absolute -right-[3px] top-1/2 -translate-y-1/2 w-[2px] h-[6px] bg-gray-400 rounded-r-sm" />
-      </div>
-      <span className="text-sm font-semibold">{p != null ? `${p}%` : '—'}</span>
     </div>
   );
 }
