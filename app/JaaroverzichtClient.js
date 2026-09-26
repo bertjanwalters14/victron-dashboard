@@ -30,8 +30,16 @@ function daysInMonth(jaar, maandIdx) {
   return new Date(jaar, maandIdx + 1, 0).getDate();
 }
 
+// Vaste namenlijst i.p.v. toLocaleDateString('nl-NL', ...): die laatste kan op de Vercel-server
+// (mogelijk beperkte ICU-locale-data) iets anders uitvoeren dan in de browser, wat een React
+// hydration-mismatch gaf (error #418) en daarmee de uitklap-knoppen liet doodvallen.
+const MAAND_NAMEN = [
+  'januari', 'februari', 'maart', 'april', 'mei', 'juni',
+  'juli', 'augustus', 'september', 'oktober', 'november', 'december',
+];
+
 function maandNaam(jaar, maandIdx) {
-  return new Date(jaar, maandIdx, 1).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+  return `${MAAND_NAMEN[maandIdx]} ${jaar}`;
 }
 
 function contractCyclus(jaar, maandIdx) {
