@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 
 const VOORSCHOT_PER_MAAND = 15;
 
@@ -91,58 +92,64 @@ function berekenCycli(maanden) {
 }
 
 function CyclusSectie({ cyclus, isHuidig }) {
-  return (
-    <div className="mb-8">
-      <div className="flex items-baseline justify-between mb-2 px-1">
-        <h2 className="text-sm font-semibold text-gray-300">
-          Contractjaar {cyclus.label}{isHuidig && <span className="text-gray-500 font-normal"> (lopend)</span>}
-        </h2>
-      </div>
+  const [open, setOpen] = useState(isHuidig); // lopend jaar staat open, afgesloten jaren dicht
 
-      <div className="bg-gray-800 rounded-xl p-5 mb-3">
-        <p className="text-gray-400 text-xs mb-1">
-          {isHuidig ? 'Opgebouwd saldo t.o.v. voorschot' : 'Eindsaldo dit contractjaar'}
-        </p>
-        <p className={`text-3xl md:text-4xl font-bold ${cyclus.totaal <= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {cyclus.totaal > 0 ? '+' : ''}€{cyclus.totaal.toFixed(2)}
-        </p>
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full text-left bg-gray-800 rounded-xl p-5 hover:bg-gray-700 transition-colors"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-gray-400 text-xs mb-1 flex items-center gap-2">
+              <span className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+              Contractjaar {cyclus.label}{isHuidig && <span className="text-gray-500"> (lopend)</span>}
+            </p>
+            <p className={`text-3xl md:text-4xl font-bold ${cyclus.totaal <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {cyclus.totaal > 0 ? '+' : ''}€{cyclus.totaal.toFixed(2)}
+            </p>
+          </div>
+        </div>
         {isHuidig && (
-          <p className="text-gray-500 text-xs mt-1">
+          <p className="text-gray-500 text-xs mt-2">
             Werkelijke kosten min betaald voorschot — negatief (groen) is wat je terugkrijgt,
             positief (rood) is wat je bijbetaalt. Eigen, consistente boekhouding, geen voorspelling
             van ANWB's exacte eindafrekening: die kan extra correcties bevatten (bv.
             energiebelasting-vermindering) die hier niet in zitten.
           </p>
         )}
-      </div>
+      </button>
 
-      <div className="bg-gray-800 rounded-xl overflow-hidden">
-        <table className="w-full text-xs sm:text-sm">
-          <thead>
-            <tr className="text-gray-400 text-[11px] sm:text-xs border-b border-gray-700">
-              <th className="text-left font-normal p-2 sm:p-3">Maand</th>
-              <th className="text-right font-normal p-2 sm:p-3">Kosten</th>
-              <th className="text-right font-normal p-2 sm:p-3 hidden sm:table-cell">Voorschot</th>
-              <th className="text-right font-normal p-2 sm:p-3">Saldo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cyclus.maanden.map(r => (
-              <tr key={r.key} className="border-b border-gray-700/50 last:border-0">
-                <td className="p-2 sm:p-3 capitalize">
-                  {maandNaam(r.jaar, r.maandIdx)}
-                  {r.bron === 'anwb' && <span className="text-gray-600 text-[10px] sm:text-xs ml-1 sm:ml-2 whitespace-nowrap" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
-                </td>
-                <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap">€{r.nettoKosten.toFixed(2)}</td>
-                <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap hidden sm:table-cell">€{r.voorschot.toFixed(2)}</td>
-                <td className={`p-2 sm:p-3 text-right font-medium whitespace-nowrap ${r.saldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {r.saldo > 0 ? '+' : ''}€{r.saldo.toFixed(2)}
-                </td>
+      {open && (
+        <div className="bg-gray-800 rounded-xl overflow-hidden mt-3">
+          <table className="w-full text-xs sm:text-sm">
+            <thead>
+              <tr className="text-gray-400 text-[11px] sm:text-xs border-b border-gray-700">
+                <th className="text-left font-normal p-2 sm:p-3">Maand</th>
+                <th className="text-right font-normal p-2 sm:p-3">Kosten</th>
+                <th className="text-right font-normal p-2 sm:p-3 hidden sm:table-cell">Voorschot</th>
+                <th className="text-right font-normal p-2 sm:p-3">Saldo</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {cyclus.maanden.map(r => (
+                <tr key={r.key} className="border-b border-gray-700/50 last:border-0">
+                  <td className="p-2 sm:p-3 capitalize">
+                    {maandNaam(r.jaar, r.maandIdx)}
+                    {r.bron === 'anwb' && <span className="text-gray-600 text-[10px] sm:text-xs ml-1 sm:ml-2 whitespace-nowrap" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
+                  </td>
+                  <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap">€{r.nettoKosten.toFixed(2)}</td>
+                  <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap hidden sm:table-cell">€{r.voorschot.toFixed(2)}</td>
+                  <td className={`p-2 sm:p-3 text-right font-medium whitespace-nowrap ${r.saldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {r.saldo > 0 ? '+' : ''}€{r.saldo.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
