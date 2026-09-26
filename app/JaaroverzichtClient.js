@@ -9,6 +9,24 @@ const VOORSCHOT_PER_MAAND = 15;
 // bevestigd doordat de overlappende maanden (april-september) op een paar euro na overeenkomen met
 // de VRM-berekening. Volledige kalendermaanden, dus het volle voorschot, geen pro-rata nodig.
 const HANDMATIGE_MAANDEN = [
+  // Contractjaar 9 nov 2024 -- 9 nov 2025. Maandcijfers uit de ANWB-app; die tellen NIET precies op
+  // tot het bedrag van de echte jaarafrekening (factuur 300007999, zie WERKELIJKE_EINDSTAND) -- een
+  // verschil van ~€196,53 dat niet aan één specifieke maand toe te wijzen is (bevestigd: gebruiker
+  // haalde alle 12 maanden uit dezelfde app-weergave). Daarom is de eindstand van déze cyclus
+  // hieronder overschreven met het echte factuurbedrag; de maandrijen tonen alleen het patroon.
+  { jaar: 2024, maandIdx: 10, nettoKosten: 119.30 }, // november
+  { jaar: 2024, maandIdx: 11, nettoKosten: 180.88 }, // december
+  { jaar: 2025, maandIdx: 0, nettoKosten: 225 },  // januari
+  { jaar: 2025, maandIdx: 1, nettoKosten: 145 },  // februari
+  { jaar: 2025, maandIdx: 2, nettoKosten: -71 },  // maart
+  { jaar: 2025, maandIdx: 3, nettoKosten: -89 },  // april
+  { jaar: 2025, maandIdx: 4, nettoKosten: -116 }, // mei
+  { jaar: 2025, maandIdx: 5, nettoKosten: -94 },  // juni
+  { jaar: 2025, maandIdx: 6, nettoKosten: -105 }, // juli
+  { jaar: 2025, maandIdx: 7, nettoKosten: -126 }, // augustus
+  { jaar: 2025, maandIdx: 8, nettoKosten: -81 },  // september
+  { jaar: 2025, maandIdx: 9, nettoKosten: 4 },    // oktober
+  // Contractjaar 9 nov 2025 -- 9 nov 2026 (lopend).
   { jaar: 2025, maandIdx: 10, nettoKosten: 76.65 },   // november
   { jaar: 2025, maandIdx: 11, nettoKosten: 144.77 },  // december
   { jaar: 2026, maandIdx: 0,  nettoKosten: 239.51 },  // januari
@@ -25,6 +43,13 @@ const HANDMATIGE_MAANDEN = [
 // Contractjaar loopt niet met het kalenderjaar mee maar met de ingangsdatum: 9 november.
 // Elke 9e november begint een nieuwe cyclus (net als ANWB's eigen jaarafrekening).
 const ANKER_JAAR = 2025, ANKER_MAAND = 10; // november = index 10
+
+// Officiële, definitieve eindstand per afgesloten cyclus-index (uit de echte jaarafrekening-factuur),
+// waar bekend. Deze heeft voorrang op de opgetelde maandcijfers -- die zijn immers een app-weergave
+// die niet gegarandeerd precies aansluit (zie toelichting bij HANDMATIGE_MAANDEN).
+const WERKELIJKE_EINDSTAND = {
+  '-1': 8.71, // 9 nov 2024 -- 9 nov 2025, factuur 300007999: €8,71 te betalen
+};
 
 function daysInMonth(jaar, maandIdx) {
   return new Date(jaar, maandIdx + 1, 0).getDate();
@@ -95,7 +120,14 @@ function berekenCycli(maanden) {
         cumulatief += saldo;
         return { ...m, saldo, cumulatief };
       });
-      return { ...c, maanden: maandenMetSaldo, totaal: cumulatief };
+      const officieel = WERKELIJKE_EINDSTAND[String(c.idx)];
+      return {
+        ...c,
+        maanden: maandenMetSaldo,
+        totaal: officieel ?? cumulatief,
+        berekendTotaal: cumulatief,
+        isOfficieel: officieel != null,
+      };
     });
 }
 
@@ -117,6 +149,7 @@ function CyclusSectie({ cyclus, isHuidig }) {
             <p className={`text-3xl md:text-4xl font-bold ${cyclus.totaal <= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {cyclus.totaal > 0 ? '+' : ''}€{cyclus.totaal.toFixed(2)}
             </p>
+            {cyclus.isOfficieel && <p className="text-gray-500 text-xs mt-0.5">Officiële jaarafrekening van ANWB</p>}
           </div>
         </div>
         {isHuidig && (
@@ -125,6 +158,14 @@ function CyclusSectie({ cyclus, isHuidig }) {
             positief (rood) is wat je bijbetaalt. Eigen, consistente boekhouding, geen voorspelling
             van ANWB's exacte eindafrekening: die kan extra correcties bevatten (bv.
             energiebelasting-vermindering) die hier niet in zitten.
+          </p>
+        )}
+        {cyclus.isOfficieel && Math.abs(cyclus.berekendTotaal - cyclus.totaal) > 0.5 && (
+          <p className="text-gray-500 text-xs mt-2">
+            De losse maandcijfers hieronder (uit de ANWB-app) tellen zelf op tot €{cyclus.berekendTotaal.toFixed(2)}
+            {' '}— een verschil van €{Math.abs(cyclus.berekendTotaal - cyclus.totaal).toFixed(2)} met de officiële
+            afrekening dat niet aan één maand toe te wijzen is. Het bedrag hierboven is het echte, betaalde bedrag;
+            de tabel toont alleen het maandpatroon.
           </p>
         )}
       </button>
