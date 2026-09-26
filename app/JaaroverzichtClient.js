@@ -85,25 +85,25 @@ export default function JaaroverzichtClient({ data }) {
         </div>
 
         <div className="bg-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm">
             <thead>
-              <tr className="text-gray-400 text-xs border-b border-gray-700">
-                <th className="text-left font-normal p-3">Maand</th>
-                <th className="text-right font-normal p-3">Werkelijke kosten</th>
-                <th className="text-right font-normal p-3">Voorschot</th>
-                <th className="text-right font-normal p-3">Saldo</th>
+              <tr className="text-gray-400 text-[11px] sm:text-xs border-b border-gray-700">
+                <th className="text-left font-normal p-2 sm:p-3">Maand</th>
+                <th className="text-right font-normal p-2 sm:p-3">Kosten</th>
+                <th className="text-right font-normal p-2 sm:p-3 hidden sm:table-cell">Voorschot</th>
+                <th className="text-right font-normal p-2 sm:p-3">Saldo</th>
               </tr>
             </thead>
             <tbody>
               {rijen.map(r => (
                 <tr key={r.key} className="border-b border-gray-700/50 last:border-0">
-                  <td className="p-3 capitalize">
+                  <td className="p-2 sm:p-3 capitalize">
                     {maandNaam(r.jaar, r.maandIdx)}
-                    {r.bron === 'anwb' && <span className="text-gray-600 text-xs ml-2" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
+                    {r.bron === 'anwb' && <span className="text-gray-600 text-[10px] sm:text-xs ml-1 sm:ml-2 whitespace-nowrap" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
                   </td>
-                  <td className="p-3 text-right text-gray-300">€{r.nettoKosten.toFixed(2)}</td>
-                  <td className="p-3 text-right text-gray-300">€{r.voorschot.toFixed(2)}</td>
-                  <td className={`p-3 text-right font-medium ${r.saldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap">€{r.nettoKosten.toFixed(2)}</td>
+                  <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap hidden sm:table-cell">€{r.voorschot.toFixed(2)}</td>
+                  <td className={`p-2 sm:p-3 text-right font-medium whitespace-nowrap ${r.saldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {r.saldo > 0 ? '+' : ''}€{r.saldo.toFixed(2)}
                   </td>
                 </tr>
