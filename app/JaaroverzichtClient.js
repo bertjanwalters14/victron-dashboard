@@ -72,14 +72,14 @@ export default function JaaroverzichtClient({ data }) {
         </div>
 
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
-          <p className="text-gray-400 text-xs mb-1">Voorspelde eindafrekening</p>
+          <p className="text-gray-400 text-xs mb-1">Opgebouwd saldo t.o.v. voorschot</p>
           <p className={`text-3xl md:text-4xl font-bold ${totaalSaldo >= 0 ? 'text-green-400' : 'text-red-400'}`}>
             {totaalSaldo >= 0 ? '+' : ''}€{totaalSaldo.toFixed(2)}
           </p>
           <p className="text-gray-500 text-xs mt-1">
-            {totaalSaldo >= 0
-              ? 'Op basis van je werkelijke verbruik krijg je dit terug bovenop je voorschot'
-              : 'Op basis van je werkelijke verbruik moet je dit bijbetalen bovenop je voorschot'}
+            Betaald voorschot min werkelijke kosten, cumulatief sinds nov 2025 — een eigen,
+            consistente boekhouding. Geen voorspelling van ANWB's exacte eindafrekening: die kan
+            extra correcties bevatten (bv. energiebelasting-vermindering) die hier niet in zitten.
           </p>
         </div>
 
