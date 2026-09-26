@@ -21,12 +21,27 @@ const HANDMATIGE_MAANDEN = [
   bron: 'anwb',
 }));
 
+// Contractjaar loopt niet met het kalenderjaar mee maar met de ingangsdatum: 9 november.
+// Elke 9e november begint een nieuwe cyclus (net als ANWB's eigen jaarafrekening).
+const ANKER_JAAR = 2025, ANKER_MAAND = 10; // november = index 10
+
 function daysInMonth(jaar, maandIdx) {
   return new Date(jaar, maandIdx + 1, 0).getDate();
 }
 
 function maandNaam(jaar, maandIdx) {
   return new Date(jaar, maandIdx, 1).toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+}
+
+function contractCyclus(jaar, maandIdx) {
+  const maandenSindsAnker = (jaar - ANKER_JAAR) * 12 + (maandIdx - ANKER_MAAND);
+  return Math.floor(maandenSindsAnker / 12);
+}
+
+function cyclusLabel(cyclusIdx) {
+  const startJaar = ANKER_JAAR + cyclusIdx;
+  const eindJaar = startJaar + 1;
+  return `9 nov ${startJaar} – 8 nov ${eindJaar}`;
 }
 
 // Groepeert de dagrijen per kalendermaand en rekent per dag een evenredig deel van het
@@ -53,15 +68,88 @@ function berekenMaanden(data) {
   return [...perMaand.values(), ...HANDMATIGE_MAANDEN].sort((a, b) => a.key.localeCompare(b.key));
 }
 
+// Groepeert de maanden per contractjaar-cyclus en houdt het cumulatieve saldo per cyclus
+// bij (begint dus opnieuw bij 0 zodra een nieuwe cyclus start op 9 november).
+function berekenCycli(maanden) {
+  const perCyclus = new Map();
+  for (const m of maanden) {
+    const idx = contractCyclus(m.jaar, m.maandIdx);
+    if (!perCyclus.has(idx)) perCyclus.set(idx, { idx, label: cyclusLabel(idx), maanden: [] });
+    perCyclus.get(idx).maanden.push(m);
+  }
+  return [...perCyclus.values()]
+    .sort((a, b) => b.idx - a.idx) // meest recente cyclus eerst
+    .map(c => {
+      let cumulatief = 0;
+      const maandenMetSaldo = c.maanden.map(m => {
+        const saldo = m.nettoKosten - m.voorschot; // negatief = je krijgt terug, positief = je betaalt bij
+        cumulatief += saldo;
+        return { ...m, saldo, cumulatief };
+      });
+      return { ...c, maanden: maandenMetSaldo, totaal: cumulatief };
+    });
+}
+
+function CyclusSectie({ cyclus, isHuidig }) {
+  return (
+    <div className="mb-8">
+      <div className="flex items-baseline justify-between mb-2 px-1">
+        <h2 className="text-sm font-semibold text-gray-300">
+          Contractjaar {cyclus.label}{isHuidig && <span className="text-gray-500 font-normal"> (lopend)</span>}
+        </h2>
+      </div>
+
+      <div className="bg-gray-800 rounded-xl p-5 mb-3">
+        <p className="text-gray-400 text-xs mb-1">
+          {isHuidig ? 'Opgebouwd saldo t.o.v. voorschot' : 'Eindsaldo dit contractjaar'}
+        </p>
+        <p className={`text-3xl md:text-4xl font-bold ${cyclus.totaal <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+          {cyclus.totaal > 0 ? '+' : ''}€{cyclus.totaal.toFixed(2)}
+        </p>
+        {isHuidig && (
+          <p className="text-gray-500 text-xs mt-1">
+            Werkelijke kosten min betaald voorschot — negatief (groen) is wat je terugkrijgt,
+            positief (rood) is wat je bijbetaalt. Eigen, consistente boekhouding, geen voorspelling
+            van ANWB's exacte eindafrekening: die kan extra correcties bevatten (bv.
+            energiebelasting-vermindering) die hier niet in zitten.
+          </p>
+        )}
+      </div>
+
+      <div className="bg-gray-800 rounded-xl overflow-hidden">
+        <table className="w-full text-xs sm:text-sm">
+          <thead>
+            <tr className="text-gray-400 text-[11px] sm:text-xs border-b border-gray-700">
+              <th className="text-left font-normal p-2 sm:p-3">Maand</th>
+              <th className="text-right font-normal p-2 sm:p-3">Kosten</th>
+              <th className="text-right font-normal p-2 sm:p-3 hidden sm:table-cell">Voorschot</th>
+              <th className="text-right font-normal p-2 sm:p-3">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cyclus.maanden.map(r => (
+              <tr key={r.key} className="border-b border-gray-700/50 last:border-0">
+                <td className="p-2 sm:p-3 capitalize">
+                  {maandNaam(r.jaar, r.maandIdx)}
+                  {r.bron === 'anwb' && <span className="text-gray-600 text-[10px] sm:text-xs ml-1 sm:ml-2 whitespace-nowrap" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
+                </td>
+                <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap">€{r.nettoKosten.toFixed(2)}</td>
+                <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap hidden sm:table-cell">€{r.voorschot.toFixed(2)}</td>
+                <td className={`p-2 sm:p-3 text-right font-medium whitespace-nowrap ${r.saldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {r.saldo > 0 ? '+' : ''}€{r.saldo.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function JaaroverzichtClient({ data }) {
   const maanden = berekenMaanden(data);
-  let cumulatief = 0;
-  const rijen = maanden.map(m => {
-    const saldo = m.nettoKosten - m.voorschot; // negatief = je krijgt terug, positief = je betaalt bij
-    cumulatief += saldo;
-    return { ...m, saldo, cumulatief };
-  });
-  const totaalSaldo = rijen.length ? rijen[rijen.length - 1].cumulatief : 0;
+  const cycli = berekenCycli(maanden);
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
@@ -71,53 +159,15 @@ export default function JaaroverzichtClient({ data }) {
           <h1 className="text-2xl md:text-3xl font-bold">Jaaroverzicht</h1>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-5 mb-6">
-          <p className="text-gray-400 text-xs mb-1">Opgebouwd saldo t.o.v. voorschot</p>
-          <p className={`text-3xl md:text-4xl font-bold ${totaalSaldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {totaalSaldo > 0 ? '+' : ''}€{totaalSaldo.toFixed(2)}
-          </p>
-          <p className="text-gray-500 text-xs mt-1">
-            Werkelijke kosten min betaald voorschot, cumulatief sinds nov 2025 — negatief (groen) is
-            wat je terugkrijgt, positief (rood) is wat je bijbetaalt. Eigen, consistente boekhouding,
-            geen voorspelling van ANWB's exacte eindafrekening: die kan extra correcties bevatten
-            (bv. energiebelasting-vermindering) die hier niet in zitten.
-          </p>
-        </div>
+        {cycli.length === 0 && (
+          <div className="bg-gray-800 rounded-xl p-6 text-center text-gray-500">Nog geen data beschikbaar</div>
+        )}
+        {cycli.map((c, i) => <CyclusSectie key={c.idx} cyclus={c} isHuidig={i === 0} />)}
 
-        <div className="bg-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-xs sm:text-sm">
-            <thead>
-              <tr className="text-gray-400 text-[11px] sm:text-xs border-b border-gray-700">
-                <th className="text-left font-normal p-2 sm:p-3">Maand</th>
-                <th className="text-right font-normal p-2 sm:p-3">Kosten</th>
-                <th className="text-right font-normal p-2 sm:p-3 hidden sm:table-cell">Voorschot</th>
-                <th className="text-right font-normal p-2 sm:p-3">Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rijen.map(r => (
-                <tr key={r.key} className="border-b border-gray-700/50 last:border-0">
-                  <td className="p-2 sm:p-3 capitalize">
-                    {maandNaam(r.jaar, r.maandIdx)}
-                    {r.bron === 'anwb' && <span className="text-gray-600 text-[10px] sm:text-xs ml-1 sm:ml-2 whitespace-nowrap" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
-                  </td>
-                  <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap">€{r.nettoKosten.toFixed(2)}</td>
-                  <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap hidden sm:table-cell">€{r.voorschot.toFixed(2)}</td>
-                  <td className={`p-2 sm:p-3 text-right font-medium whitespace-nowrap ${r.saldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {r.saldo > 0 ? '+' : ''}€{r.saldo.toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-              {rijen.length === 0 && (
-                <tr><td colSpan={4} className="p-6 text-center text-gray-500">Nog geen data beschikbaar</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <p className="text-center text-gray-600 text-xs mt-6">
+        <p className="text-center text-gray-600 text-xs mt-2">
           Werkelijke kosten = echt verbruik/teruglevering × echte EnergyZero-uurprijzen, all-in.
           Voorschot = €{VOORSCHOT_PER_MAAND}/maand, evenredig verdeeld over de dagen met data.
+          Contractjaar loopt van 9 november t/m 8 november, gelijk aan de ANWB-jaarafrekening.
         </p>
       </div>
     </main>
