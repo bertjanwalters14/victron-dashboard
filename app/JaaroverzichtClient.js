@@ -57,7 +57,7 @@ export default function JaaroverzichtClient({ data }) {
   const maanden = berekenMaanden(data);
   let cumulatief = 0;
   const rijen = maanden.map(m => {
-    const saldo = m.voorschot - m.nettoKosten;
+    const saldo = m.nettoKosten - m.voorschot; // negatief = je krijgt terug, positief = je betaalt bij
     cumulatief += saldo;
     return { ...m, saldo, cumulatief };
   });
@@ -73,13 +73,14 @@ export default function JaaroverzichtClient({ data }) {
 
         <div className="bg-gray-800 rounded-xl p-5 mb-6">
           <p className="text-gray-400 text-xs mb-1">Opgebouwd saldo t.o.v. voorschot</p>
-          <p className={`text-3xl md:text-4xl font-bold ${totaalSaldo >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {totaalSaldo >= 0 ? '+' : ''}€{totaalSaldo.toFixed(2)}
+          <p className={`text-3xl md:text-4xl font-bold ${totaalSaldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {totaalSaldo > 0 ? '+' : ''}€{totaalSaldo.toFixed(2)}
           </p>
           <p className="text-gray-500 text-xs mt-1">
-            Betaald voorschot min werkelijke kosten, cumulatief sinds nov 2025 — een eigen,
-            consistente boekhouding. Geen voorspelling van ANWB's exacte eindafrekening: die kan
-            extra correcties bevatten (bv. energiebelasting-vermindering) die hier niet in zitten.
+            Werkelijke kosten min betaald voorschot, cumulatief sinds nov 2025 — negatief (groen) is
+            wat je terugkrijgt, positief (rood) is wat je bijbetaalt. Eigen, consistente boekhouding,
+            geen voorspelling van ANWB's exacte eindafrekening: die kan extra correcties bevatten
+            (bv. energiebelasting-vermindering) die hier niet in zitten.
           </p>
         </div>
 
@@ -102,8 +103,8 @@ export default function JaaroverzichtClient({ data }) {
                   </td>
                   <td className="p-3 text-right text-gray-300">€{r.nettoKosten.toFixed(2)}</td>
                   <td className="p-3 text-right text-gray-300">€{r.voorschot.toFixed(2)}</td>
-                  <td className={`p-3 text-right font-medium ${r.saldo >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {r.saldo >= 0 ? '+' : ''}€{r.saldo.toFixed(2)}
+                  <td className={`p-3 text-right font-medium ${r.saldo <= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {r.saldo > 0 ? '+' : ''}€{r.saldo.toFixed(2)}
                   </td>
                 </tr>
               ))}
