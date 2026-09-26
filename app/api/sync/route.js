@@ -4,10 +4,25 @@ const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
 // Consumentenprijs, gelijk aan de opbouw die ess_logic.js (Node-RED) gebruikt voor de sturing.
-// Leveringsformule én teruglevering: (p + 0.0197 + 0.0916) * 1.21
+// Leveringsformule (inkoop, en teruglevering ZOLANG saldering geldt): (p + 0.0197 + 0.0916) * 1.21
 // Naam is niet willekeurig: ANWB Energie is de daadwerkelijke leverancier.
 function anwbPrijs(spot) {
   return (spot + 0.0197 + 0.0916) * 1.21;
+}
+
+// Saldering stopt per 1 januari 2027 (definitief, Eerste Kamer) -- zelfde aanpak als ess_logic.js's
+// v42/v43: tot die datum blijft teruglevering gewoon tegen de all-in prijs (saldering, ongewijzigd),
+// erna geldt de wettelijke bodem (minimaal 50% van kale marktprijs + opslag, EXCL. energiebelasting/
+// BTW, wet geldig tot 1 jan 2030). SELL_ADJ is een placeholder voor de echte terugleververgoeding
+// van de dan gekozen leverancier zodra die bekend is (nu 0, dus dit ís de wettelijke minimumschatting).
+// Raakt winstBg/winstPg, en daarmee ook batMeerwaarde/totaalWinst/nettoKosten -- ongewijzigd voor elke
+// datum vóór 2027, dus geen regressie op bestaande/historische dagen.
+const SALDERING_EINDDATUM     = '2027-01-01';
+const TERUGLEVER_BODEM_FRACTIE = 0.5;
+const SELL_ADJ = 0;
+
+function verkoopprijsKaal(spot) {
+  return TERUGLEVER_BODEM_FRACTIE * (spot + 0.0197 + 0.0916) + SELL_ADJ;
 }
 
 async function haalSpotPrijzen(datumStr) {
@@ -56,13 +71,18 @@ async function syncEénDag(datumStr) {
   // De kale prijs is nodig voor Pb's opportunity cost (zie batMeerwaarde hieronder): zon die de accu
   // in gaat is geen netstroom-transactie, dus geen retail-opslag van toepassing -- alleen wat die
   // kWh zelf op de markt waard was.
+  const salderingActief = datumStr < SALDERING_EINDDATUM;
+
   const prijsPerUur = {};
   const kalePrijsPerUur = {};
+  const verkoopPrijsPerUur = {};
   for (const p of spotPrijzen) {
     const d = new Date(p.readingDate);
     d.setMinutes(0, 0, 0);
-    prijsPerUur[d.getTime()] = anwbPrijs(parseFloat(p.price));
-    kalePrijsPerUur[d.getTime()] = parseFloat(p.price);
+    const spot = parseFloat(p.price);
+    prijsPerUur[d.getTime()] = anwbPrijs(spot);
+    kalePrijsPerUur[d.getTime()] = spot;
+    verkoopPrijsPerUur[d.getTime()] = salderingActief ? anwbPrijs(spot) : verkoopprijsKaal(spot);
   }
 
   function vindPrijs(tsMs) {
@@ -75,6 +95,12 @@ async function syncEénDag(datumStr) {
     d.setMinutes(0, 0, 0);
     return kalePrijsPerUur[d.getTime()] ?? 0;
   }
+  // Prijs voor Bg/Pg (teruglevering): all-in zolang saldering geldt, anders de wettelijke bodem.
+  function vindVerkoopPrijs(tsMs) {
+    const d = new Date(tsMs);
+    d.setMinutes(0, 0, 0);
+    return verkoopPrijsPerUur[d.getTime()] ?? (salderingActief ? 0.28 : 0.05);
+  }
 
   function berekenSom(veld) {
     return (records[veld] || []).reduce((som, [ts, kwh]) => som + kwh * vindPrijs(ts), 0);
@@ -82,12 +108,15 @@ async function syncEénDag(datumStr) {
   function berekenSomKaal(veld) {
     return (records[veld] || []).reduce((som, [ts, kwh]) => som + kwh * vindKalePrijs(ts), 0);
   }
+  function berekenSomVerkoop(veld) {
+    return (records[veld] || []).reduce((som, [ts, kwh]) => som + kwh * vindVerkoopPrijs(ts), 0);
+  }
 
   function totaalKwh(veld) {
     return (records[veld] || []).reduce((s, [, v]) => s + v, 0);
   }
 
-  const winstBg  = berekenSom('Bg');
+  const winstBg  = berekenSomVerkoop('Bg');
   const winstBc  = berekenSom('Bc');
   const winstPc  = berekenSom('Pc');
   const kostenGc = berekenSom('Gc');
@@ -118,7 +147,7 @@ async function syncEénDag(datumStr) {
   // Onder saldering (nu actief) nettoot export 1-op-1 tegen import tegen dezelfde all-in prijs, dus
   // gewoon: (Gb+Gc, betaald) - (Bg+Pg, gecrediteerd). Positief = die dag netto kosten, negatief =
   // netto credit (bouwt mee aan de teruggave).
-  const winstPg = berekenSom('Pg');
+  const winstPg = berekenSomVerkoop('Pg');
   const nettoKosten = kostenGb + kostenGc - winstBg - winstPg;
 
   await upsertEnergieData({
@@ -150,6 +179,7 @@ async function syncEénDag(datumStr) {
     winstPbKaal:   winstPbKaal.toFixed(2),
     batMeerwaarde: batMeerwaarde.toFixed(2),
     nettoKosten:   nettoKosten.toFixed(2),
+    salderingActief,
   };
 }
 
