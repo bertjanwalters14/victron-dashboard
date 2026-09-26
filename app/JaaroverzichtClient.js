@@ -2,6 +2,25 @@
 
 const VOORSCHOT_PER_MAAND = 15;
 
+// Maanden van vóór de Victron-installatie (4 april 2026) -- geen VRM-data, dus overgenomen uit
+// de ANWB-app zelf (screenshot van de gebruiker). "Werkelijk" daar is de netto energiekosten die
+// maand (positief = kosten, negatief = credit) -- exact hetzelfde begrip als netto_kosten hieronder;
+// bevestigd doordat de overlappende maanden (april-september) op een paar euro na overeenkomen met
+// de VRM-berekening. Volledige kalendermaanden, dus het volle voorschot, geen pro-rata nodig.
+const HANDMATIGE_MAANDEN = [
+  { jaar: 2025, maandIdx: 10, nettoKosten: 76.65 },   // november
+  { jaar: 2025, maandIdx: 11, nettoKosten: 144.77 },  // december
+  { jaar: 2026, maandIdx: 0,  nettoKosten: 239.51 },  // januari
+  { jaar: 2026, maandIdx: 1,  nettoKosten: 146.83 },  // februari
+  { jaar: 2026, maandIdx: 2,  nettoKosten: -7.24 },   // maart
+].map(m => ({
+  ...m,
+  key: `${m.jaar}-${String(m.maandIdx + 1).padStart(2, '0')}`,
+  voorschot: VOORSCHOT_PER_MAAND,
+  dagen: null,
+  bron: 'anwb',
+}));
+
 function daysInMonth(jaar, maandIdx) {
   return new Date(jaar, maandIdx + 1, 0).getDate();
 }
@@ -29,8 +48,9 @@ function berekenMaanden(data) {
     m.nettoKosten += parseFloat(r.netto_kosten);
     m.voorschot += VOORSCHOT_PER_MAAND / daysInMonth(d.getFullYear(), d.getMonth());
     m.dagen += 1;
+    m.bron = 'vrm';
   }
-  return [...perMaand.values()].sort((a, b) => a.key.localeCompare(b.key));
+  return [...perMaand.values(), ...HANDMATIGE_MAANDEN].sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export default function JaaroverzichtClient({ data }) {
@@ -76,7 +96,10 @@ export default function JaaroverzichtClient({ data }) {
             <tbody>
               {rijen.map(r => (
                 <tr key={r.key} className="border-b border-gray-700/50 last:border-0">
-                  <td className="p-3 capitalize">{maandNaam(r.jaar, r.maandIdx)}</td>
+                  <td className="p-3 capitalize">
+                    {maandNaam(r.jaar, r.maandIdx)}
+                    {r.bron === 'anwb' && <span className="text-gray-600 text-xs ml-2" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
+                  </td>
                   <td className="p-3 text-right text-gray-300">€{r.nettoKosten.toFixed(2)}</td>
                   <td className="p-3 text-right text-gray-300">€{r.voorschot.toFixed(2)}</td>
                   <td className={`p-3 text-right font-medium ${r.saldo >= 0 ? 'text-green-400' : 'text-red-400'}`}>
