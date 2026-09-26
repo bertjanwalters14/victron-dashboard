@@ -113,6 +113,14 @@ async function syncEénDag(datumStr) {
   const winstPbKaal   = berekenSomKaal('Pb');
   const batMeerwaarde = winstBg + winstBc - kostenGb - winstPbKaal - accuKosten;
 
+  // Werkelijke netto energiekosten van het HELE huishouden die dag (niet accu-specifiek, in
+  // tegenstelling tot batMeerwaarde hierboven) -- voor het jaaroverzicht (voorschot vs. werkelijk).
+  // Onder saldering (nu actief) nettoot export 1-op-1 tegen import tegen dezelfde all-in prijs, dus
+  // gewoon: (Gb+Gc, betaald) - (Bg+Pg, gecrediteerd). Positief = die dag netto kosten, negatief =
+  // netto credit (bouwt mee aan de teruggave).
+  const winstPg = berekenSom('Pg');
+  const nettoKosten = kostenGb + kostenGc - winstBg - winstPg;
+
   await upsertEnergieData({
     datum:           datumStr,
     solar_yield_kwh: PgKwh + PcKwh + PbKwh,
@@ -121,6 +129,7 @@ async function syncEénDag(datumStr) {
     net_export_kwh:  BgKwh + PgKwh,
     winst_euro:      totaalWinst,
     bat_meerwaarde:  batMeerwaarde,
+    netto_kosten:    nettoKosten,
   });
 
   return {
@@ -140,6 +149,7 @@ async function syncEénDag(datumStr) {
     winst:         totaalWinst.toFixed(2),
     winstPbKaal:   winstPbKaal.toFixed(2),
     batMeerwaarde: batMeerwaarde.toFixed(2),
+    nettoKosten:   nettoKosten.toFixed(2),
   };
 }
 

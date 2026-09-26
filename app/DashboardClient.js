@@ -38,6 +38,7 @@ export default function DashboardClient({ data }) {
           </div>
           <div className="flex items-center gap-3">
             <RefreshButton />
+            <a href="/jaaroverzicht" className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-semibold whitespace-nowrap">📅 Jaaroverzicht →</a>
             <a href="/ess" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold whitespace-nowrap">⚡ Live sturing →</a>
             <AccuBadge />
           </div>
