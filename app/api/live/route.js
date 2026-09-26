@@ -52,6 +52,12 @@ export async function GET(request) {
       }, 0);
     }
 
+    // Kale marktprijs (geen opslag/belasting/BTW) -- zelfde reden als in /api/sync: Pb (zon->accu) is
+    // geen netstroom-transactie, dus geen retail-opslag van toepassing op die gemiste exportwaarde.
+    function berekenSomKaal(veld) {
+      return (records[veld] || []).reduce((som, [ts, kwh]) => som + kwh * vindSpot(ts), 0);
+    }
+
     function totaalKwh(veld) {
       return (records[veld] || []).reduce((s, [, v]) => s + v, 0);
     }
@@ -71,7 +77,8 @@ export async function GET(request) {
     const accuKosten  = (GbKwh + BgKwh + BcKwh) * 0.0185;
     const zonKwhVandaag = +(PgKwh + PcKwh + PbKwh).toFixed(2);
 
-    const winst = winstBg + winstBc - kostenGb - accuKosten;
+    const winstPbKaal = berekenSomKaal('Pb');
+    const winst = winstBg + winstBc - kostenGb - winstPbKaal - accuKosten;
 
     return Response.json({
       success: true,
