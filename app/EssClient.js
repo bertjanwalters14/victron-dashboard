@@ -25,6 +25,7 @@ function EssTooltip({ active, payload }) {
       <div>Prijs all-in: <b>€{Number(d.prijs).toFixed(3)}</b></div>
       <div style={{ color: '#fde047' }}>Zon: {Number(d.pv).toFixed(1)} kWh</div>
       <div style={{ color: '#a855f7' }}>SOC: {d.soc}%</div>
+      {d.temp != null && <div style={{ color: '#f87171' }}>Temperatuur: {Number(d.temp).toFixed(1)}°C</div>}
       <div style={{ color: '#9ca3af', marginTop: 2 }}>{CAT_LABEL[d.cat] || d.cat}</div>
     </div>
   );
@@ -269,6 +270,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="pv" hide domain={[0, dataMaxPv]} />
+              <YAxis yAxisId="temp" hide domain={[-15, 35]} />
               <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine yAxisId="prijs" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7}
@@ -281,6 +283,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
                 ))}
               </Bar>
               <Line yAxisId="pv" type="monotone" dataKey="pv" name="Zon (kWh)" stroke="#fde047" dot={false} strokeWidth={2} strokeDasharray="5 3" />
+              <Line yAxisId="temp" type="monotone" dataKey="temp" name="Temperatuur (°C)" stroke="#f87171" dot={false} strokeWidth={1.5} strokeDasharray="2 2" connectNulls />
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
             </ResponsiveContainer>
