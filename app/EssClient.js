@@ -339,7 +339,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
               <YAxis yAxisId="zon" domain={[0, dataMaxPv]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis yAxisId="temp" orientation="right" tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <YAxis yAxisId="temp" orientation="right" domain={['dataMin - 2', 'dataMax + 2']} tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <Tooltip content={<WeerTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine yAxisId="zon" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7} />
