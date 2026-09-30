@@ -9,6 +9,13 @@ import BatteryBadge from './BatteryBadge';
 // zelfde conventie als VRM: alles wat van het net komt zakt onder de nullijn).
 const STROOM_KLEUR = { Bg: '#22d3ee', Pg: '#f97316', Pb: '#4ade80', Pc: '#a3e635', Bc: '#3b82f6', Gc: '#f87171', Gb: '#c084fc' };
 
+// Vaste assen i.p.v. per-dag meeschalend, zodat de balkhoogte/lijnpositie zelf al laat zien of het een
+// zonnige/koude dag was -- met een dynamische as (die elke dag opnieuw naar de eigen max/min schaalt) ziet
+// een bewolkte dag er even "vol" uit als een stralende, en dat is precies wat je niet wil kunnen zien.
+const PV_MAX_KWH_PER_UUR = 7;   // ~6,6 kWp AC-gekoppelde PV (zie CLAUDE.md), + kleine marge
+const TEMP_MIN_C = -5;
+const TEMP_MAX_C = 35;
+
 function StroomTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null;
   return (
@@ -45,7 +52,7 @@ function EnergieStromenChart() {
 
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <ComposedChart data={uren} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="15%">
+      <ComposedChart data={uren} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="15%" stackOffset="sign">
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
         <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
         <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
@@ -251,7 +258,6 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
     if (dag === 'morgen') return morgen;
     return true;
   });
-  const dataMaxPv = Math.max(1, ...data.map(d => Number(d.pv) || 0)) * 1.15;   // kop voor de zonnelijn
   const contextZin = dagContext(data);
 
   function toggleLaden() {
@@ -398,8 +404,8 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
-              <YAxis yAxisId="zon" domain={[0, dataMaxPv]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis yAxisId="temp" orientation="right" domain={['dataMin - 2', 'dataMax + 2']} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <YAxis yAxisId="zon" domain={[0, PV_MAX_KWH_PER_UUR]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <YAxis yAxisId="temp" orientation="right" domain={[TEMP_MIN_C, TEMP_MAX_C]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <Tooltip content={<WeerTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine yAxisId="zon" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7} />
