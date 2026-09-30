@@ -47,10 +47,20 @@ function EssTooltip({ active, payload }) {
     <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '8px 11px', color: '#fff', fontSize: 12, lineHeight: 1.5 }}>
       <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{d.uur}</div>
       <div>Prijs all-in: <b>€{Number(d.prijs).toFixed(3)}</b></div>
-      <div style={{ color: '#fde047' }}>Zon: {Number(d.pv).toFixed(1)} kWh</div>
       <div style={{ color: '#a855f7' }}>SOC: {d.soc}%</div>
-      {d.temp != null && <div style={{ color: '#f87171' }}>Temperatuur: {Number(d.temp).toFixed(1)}°C</div>}
       <div style={{ color: '#9ca3af', marginTop: 2 }}>{CAT_LABEL[d.cat] || d.cat}</div>
+    </div>
+  );
+}
+
+function WeerTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '8px 11px', color: '#fff', fontSize: 12, lineHeight: 1.5 }}>
+      <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{d.uur}</div>
+      <div style={{ color: '#fde047' }}>Zon: {Number(d.pv).toFixed(1)} kWh</div>
+      {d.temp != null && <div style={{ color: '#f87171' }}>Temperatuur: {Number(d.temp).toFixed(1)}°C</div>}
     </div>
   );
 }
@@ -293,13 +303,14 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               {contextZin}
             </div>
           )}
-            <ResponsiveContainer width="100%" height={340}>
+
+          <h3 className="text-xs font-semibold text-gray-400 mb-1">🔋 Laden &amp; prijs</h3>
+          <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
               <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis yAxisId="pv" hide domain={[0, dataMaxPv]} />
               <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine yAxisId="prijs" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7}
@@ -311,17 +322,31 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
                     fillOpacity={d.uur === nuUur ? 1 : 0.9} />
                 ))}
               </Bar>
-              <Line yAxisId="pv" type="monotone" dataKey="pv" name="Zon (kWh)" stroke="#fde047" dot={false} strokeWidth={2} strokeDasharray="5 3" />
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
-            </ResponsiveContainer>
-          <p className="text-xs text-gray-500 mt-2">
+          </ResponsiveContainer>
+          <p className="text-xs text-gray-500 mt-2 mb-5">
             <span style={{ color: '#3b82f6' }}>■</span> kopen ·
             <span style={{ color: '#22c55e' }}> ■</span> verkopen ·
             <span style={{ color: '#f59e0b' }}> ■</span> normaal ·
             <span style={{ color: '#06b6d4' }}> ■</span> gratis (negatief) ·
             <span style={{ color: '#c084fc' }}> ■</span> PV → net
           </p>
+
+          <h3 className="text-xs font-semibold text-gray-400 mb-1">🌤️ Weer</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
+              <YAxis yAxisId="zon" domain={[0, dataMaxPv]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <YAxis yAxisId="temp" orientation="right" tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <Tooltip content={<WeerTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <ReferenceLine yAxisId="zon" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7} />
+              <Bar yAxisId="zon" dataKey="pv" name="Zon (kWh)" fill="#fde047" fillOpacity={0.85} maxBarSize={16} radius={[3, 3, 0, 0]} />
+              <Line yAxisId="temp" type="monotone" dataKey="temp" name="Temperatuur (°C)" stroke="#f87171" dot={false} strokeWidth={2} connectNulls />
+            </ComposedChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </main>
