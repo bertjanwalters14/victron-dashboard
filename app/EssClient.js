@@ -16,6 +16,30 @@ function modeColor(m) {
 
 const CAT_LABEL = { kopen: 'Kopen', verkopen: 'Verkopen', normaal: 'Zelfverbruik', gratis: 'Gratis laden (negatief)', pvnet: 'PV → net (accu vol)' };
 
+// Vat de geselecteerde periode samen in gewone taal (temperatuur + zon + wat de sturing daarmee doet),
+// puur afgeleid van de forecast-data zelf -- geen apart backend-veld nodig, werkt dus hetzelfde voor
+// vandaag/morgen/alles. TEMP_BALANS is hetzelfde omslagpunt als het graaddagen-model in ess_logic.js.
+const TEMP_BALANS = 13.5;
+function dagContext(data) {
+  const temps = data.map(d => d.temp).filter(t => t != null);
+  if (!temps.length) return null;   // geen forecast-data (Node-RED nog niet bijgewerkt, of geen dekking)
+  const avgTemp = temps.reduce((s, t) => s + t, 0) / temps.length;
+  const totalPv = data.reduce((s, d) => s + (Number(d.pv) || 0), 0);
+  const koopUren = data.filter(d => d.cat === 'kopen').length;
+  const verkoopUren = data.filter(d => d.cat === 'verkopen').length;
+
+  const tempTxt = avgTemp < TEMP_BALANS ? `❄️ Koud (gem. ${avgTemp.toFixed(0)}°C)` : `🌤️ Mild (gem. ${avgTemp.toFixed(0)}°C)`;
+  const pvTxt = totalPv < 5 ? `weinig zon (${totalPv.toFixed(0)} kWh)`
+    : totalPv < 20 ? `wat zon (${totalPv.toFixed(0)} kWh)`
+    : `veel zon (${totalPv.toFixed(0)} kWh)`;
+
+  const impact = koopUren > 0 ? `${koopUren} uur inkoop gepland (piekverbruik opvangen)`
+    : verkoopUren > 0 ? `${verkoopUren} uur verkoop gepland`
+    : 'vooral zelfverbruik';
+
+  return `${tempTxt} en ${pvTxt} → ${impact}`;
+}
+
 function EssTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
@@ -158,6 +182,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
     return true;
   });
   const dataMaxPv = Math.max(1, ...data.map(d => Number(d.pv) || 0)) * 1.15;   // kop voor de zonnelijn
+  const contextZin = dagContext(data);
 
   function toggleLaden() {
     const next = !aan;
@@ -263,6 +288,11 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               ))}
             </div>
           </div>
+          {contextZin && (
+            <div className="text-sm text-gray-300 bg-gray-900/60 border border-gray-700 rounded-lg px-3 py-2 mb-3">
+              {contextZin}
+            </div>
+          )}
             <ResponsiveContainer width="100%" height={340}>
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -270,7 +300,6 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
               <YAxis yAxisId="pv" hide domain={[0, dataMaxPv]} />
-              <YAxis yAxisId="temp" hide domain={[-15, 35]} />
               <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <ReferenceLine yAxisId="prijs" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7}
@@ -283,7 +312,6 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
                 ))}
               </Bar>
               <Line yAxisId="pv" type="monotone" dataKey="pv" name="Zon (kWh)" stroke="#fde047" dot={false} strokeWidth={2} strokeDasharray="5 3" />
-              <Line yAxisId="temp" type="monotone" dataKey="temp" name="Temperatuur (°C)" stroke="#f87171" dot={false} strokeWidth={1.5} strokeDasharray="2 2" connectNulls />
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
             </ResponsiveContainer>
