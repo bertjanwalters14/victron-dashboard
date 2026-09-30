@@ -1,8 +1,68 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
 import BatteryBadge from './BatteryBadge';
+
+// Energiestromen-kleuren, losjes naar VRM's eigen palet (cyaan=accu->net, oranje=PV->net, groen=PV->accu,
+// limoen=PV->verbruik, blauw=accu->verbruik, rood/paars=van het net -- die twee als NEGATIEF getoond,
+// zelfde conventie als VRM: alles wat van het net komt zakt onder de nullijn).
+const STROOM_KLEUR = { Bg: '#22d3ee', Pg: '#f97316', Pb: '#4ade80', Pc: '#a3e635', Bc: '#3b82f6', Gc: '#f87171', Gb: '#c084fc' };
+
+function StroomTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '8px 11px', color: '#fff', fontSize: 12, lineHeight: 1.6 }}>
+      <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{label}</div>
+      {payload.filter(p => Math.abs(p.value) > 0.01).map(p => (
+        <div key={p.dataKey} style={{ color: p.fill }}>{p.name}: {Math.abs(p.value).toFixed(2)} kWh</div>
+      ))}
+    </div>
+  );
+}
+
+// Haalt de echte, gerealiseerde energiestromen van vandaag op (VRM-uurdata, zelfde bron als /api/live en
+// /api/sync) -- in tegenstelling tot de andere twee grafieken hierboven is dit geen planning/forecast maar
+// wat de accu/PV/net daadwerkelijk hebben gedaan. Client-side fetch (eenmalig bij laden), net als de
+// AccuBadge/LiveVandaag-widgets op het hoofddashboard.
+function EnergieStromenChart() {
+  const [uren, setUren] = useState(null);
+  const [fout, setFout] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/energiestromen?secret=Nummer14!')
+      .then(r => r.json())
+      .then(j => {
+        if (j.success) setUren(j.uren.map(u => ({ ...u, Gc: -u.Gc, Gb: -u.Gb })));
+        else setFout(true);
+      })
+      .catch(() => setFout(true));
+  }, []);
+
+  if (fout) return <p className="text-xs text-gray-500">Energiestromen nu niet beschikbaar.</p>;
+  if (!uren) return <p className="text-xs text-gray-500">Laden…</p>;
+  if (!uren.length) return <p className="text-xs text-gray-500">Nog geen data vandaag.</p>;
+
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <ComposedChart data={uren} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="15%">
+        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+        <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
+        <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
+        <Tooltip content={<StroomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <ReferenceLine y={0} stroke="#6b7280" />
+        <Bar dataKey="Bg" name="Accu → net" stackId="stroom" fill={STROOM_KLEUR.Bg} />
+        <Bar dataKey="Pg" name="PV → net" stackId="stroom" fill={STROOM_KLEUR.Pg} />
+        <Bar dataKey="Pb" name="PV → accu" stackId="stroom" fill={STROOM_KLEUR.Pb} />
+        <Bar dataKey="Pc" name="PV → verbruik" stackId="stroom" fill={STROOM_KLEUR.Pc} />
+        <Bar dataKey="Bc" name="Accu → verbruik" stackId="stroom" fill={STROOM_KLEUR.Bc} />
+        <Bar dataKey="Gc" name="Net → verbruik" stackId="stroom" fill={STROOM_KLEUR.Gc} />
+        <Bar dataKey="Gb" name="Net → accu" stackId="stroom" fill={STROOM_KLEUR.Gb} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
 
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4', pvnet: '#c084fc' };
 
@@ -347,6 +407,10 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <Line yAxisId="temp" type="monotone" dataKey="temp" name="Temperatuur (°C)" stroke="#f87171" dot={false} strokeWidth={2} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
+
+          <h3 className="text-xs font-semibold text-gray-400 mb-1 mt-5">🔋 Energiestromen vandaag</h3>
+          <p className="text-xs text-gray-500 mb-1">Wat de accu, zon en het net daadwerkelijk deden (werkelijke VRM-data, geen planning)</p>
+          <EnergieStromenChart />
         </div>
       </div>
     </main>
