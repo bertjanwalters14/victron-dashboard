@@ -9,6 +9,25 @@ import BatteryBadge from './BatteryBadge';
 // zelfde conventie als VRM: alles wat van het net komt zakt onder de nullijn).
 const STROOM_KLEUR = { Bg: '#22d3ee', Pg: '#f97316', Pb: '#4ade80', Pc: '#a3e635', Bc: '#3b82f6', Gc: '#f87171', Gb: '#c084fc' };
 
+// Celverschil-badge (max-cel - min-cel): dezelfde drempels als ess_logic.js v49 (CEL_VERSCHIL_DREMPEL
+// 0,05V triggert balanceren, CEL_VERSCHIL_HERSTELD 0,03V is weer gezond), zodat je in één oogopslag ziet
+// of balanceren eraan zit te komen -- data komt al mee in status.dbg, geen aparte call nodig.
+function CelBalansBadge({ dbg }) {
+  if (!dbg || dbg.celVerschil == null) return null;
+  const v = dbg.celVerschil;
+  const stijl = dbg.balansHoldActief
+    ? { kleur: 'text-blue-300 bg-blue-950/40 border-blue-800', label: 'balanceren: vastgehouden op 100%' }
+    : v >= 0.05 ? { kleur: 'text-red-300 bg-red-950/40 border-red-800', label: 'balanceren nodig/actief' }
+    : v >= 0.03 ? { kleur: 'text-amber-300 bg-amber-950/40 border-amber-800', label: 'loopt op' }
+    : { kleur: 'text-green-300 bg-green-950/40 border-green-800', label: 'gezond' };
+  return (
+    <div className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border mb-2 ${stijl.kleur}`}
+      title={`min ${dbg.celMin?.toFixed(3)}V / max ${dbg.celMax?.toFixed(3)}V`}>
+      🔋 Celverschil: <b>{v.toFixed(3)}V</b> ({stijl.label})
+    </div>
+  );
+}
+
 // Vaste assen i.p.v. per-dag meeschalend, zodat de balkhoogte/lijnpositie zelf al laat zien of het een
 // zonnige/koude dag was -- met een dynamische as (die elke dag opnieuw naar de eigen max/min schaalt) ziet
 // een bewolkte dag er even "vol" uit als een stralende, en dat is precies wat je niet wil kunnen zien.
@@ -450,6 +469,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
 
           <h3 className="text-xs font-semibold text-gray-400 mb-1 mt-5">🔋 Energiestromen</h3>
           <p className="text-xs text-gray-500 mb-1">Wat de accu, zon en het net daadwerkelijk deden (werkelijke VRM-data, geen planning)</p>
+          <CelBalansBadge dbg={s.dbg} />
           <EnergieStromenChart />
         </div>
       </div>
