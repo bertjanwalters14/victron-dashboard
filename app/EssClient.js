@@ -31,26 +31,59 @@ function StroomTooltip({ active, payload, label }) {
 // Haalt de echte, gerealiseerde energiestromen van vandaag op (VRM-uurdata, zelfde bron als /api/live en
 // /api/sync) -- in tegenstelling tot de andere twee grafieken hierboven is dit geen planning/forecast maar
 // wat de accu/PV/net daadwerkelijk hebben gedaan. Client-side fetch (eenmalig bij laden), net als de
-// AccuBadge/LiveVandaag-widgets op het hoofddashboard.
+// AccuBadge/LiveVandaag-widgets op het hoofddashboard. Dag-navigatie (vorige/volgende) laat je ook
+// eerdere dagen bekijken -- VRM bewaart de geschiedenis gewoon, alleen "vandaag" was hardcoded.
+function vandaagNL() {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });   // YYYY-MM-DD
+}
+function dagVerschuiven(datum, delta) {
+  const d = new Date(datum + 'T12:00:00');   // 12:00 als anker, zodat DST-overgangen nooit een dag overslaan
+  d.setDate(d.getDate() + delta);
+  return d.toLocaleDateString('sv-SE');
+}
+function formatDagLabel(datum) {
+  const vandaag = vandaagNL();
+  if (datum === vandaag) return 'Vandaag';
+  if (datum === dagVerschuiven(vandaag, -1)) return 'Gisteren';
+  return new Date(datum + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
 function EnergieStromenChart() {
+  const [datum, setDatum] = useState(vandaagNL());
   const [uren, setUren] = useState(null);
   const [fout, setFout] = useState(false);
+  const isVandaag = datum === vandaagNL();
 
   useEffect(() => {
-    fetch('/api/energiestromen?secret=Nummer14!')
+    let genegeerd = false;
+    fetch(`/api/energiestromen?secret=Nummer14!&datum=${datum}`)
       .then(r => r.json())
       .then(j => {
-        if (j.success) setUren(j.uren.map(u => ({ ...u, Gc: -u.Gc, Gb: -u.Gb })));
+        if (genegeerd) return;
+        if (j.success) { setUren(j.uren.map(u => ({ ...u, Gc: -u.Gc, Gb: -u.Gb }))); setFout(false); }
         else setFout(true);
       })
-      .catch(() => setFout(true));
-  }, []);
+      .catch(() => { if (!genegeerd) setFout(true); });
+    return () => { genegeerd = true; };
+  }, [datum]);
 
-  if (fout) return <p className="text-xs text-gray-500">Energiestromen nu niet beschikbaar.</p>;
-  if (!uren) return <p className="text-xs text-gray-500">Laden…</p>;
-  if (!uren.length) return <p className="text-xs text-gray-500">Nog geen data vandaag.</p>;
+  const nav = (
+    <div className="flex items-center gap-2 mb-2">
+      <button type="button" onClick={() => setDatum(d => dagVerschuiven(d, -1))}
+        className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-200">← Vorige dag</button>
+      <span className="text-xs text-gray-400 min-w-[90px] text-center">{formatDagLabel(datum)}</span>
+      <button type="button" onClick={() => setDatum(d => dagVerschuiven(d, 1))} disabled={isVandaag}
+        className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed">Volgende dag →</button>
+    </div>
+  );
+
+  if (fout) return <>{nav}<p className="text-xs text-gray-500">Energiestromen nu niet beschikbaar.</p></>;
+  if (!uren) return <>{nav}<p className="text-xs text-gray-500">Laden…</p></>;
+  if (!uren.length) return <>{nav}<p className="text-xs text-gray-500">Geen data voor deze dag.</p></>;
 
   return (
+    <>
+    {nav}
     <ResponsiveContainer width="100%" height={260}>
       <ComposedChart data={uren} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="15%" stackOffset="sign">
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -68,6 +101,7 @@ function EnergieStromenChart() {
         <Bar dataKey="Gb" name="Net → accu" stackId="stroom" fill={STROOM_KLEUR.Gb} />
       </ComposedChart>
     </ResponsiveContainer>
+    </>
   );
 }
 
@@ -414,7 +448,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
             </ComposedChart>
           </ResponsiveContainer>
 
-          <h3 className="text-xs font-semibold text-gray-400 mb-1 mt-5">🔋 Energiestromen vandaag</h3>
+          <h3 className="text-xs font-semibold text-gray-400 mb-1 mt-5">🔋 Energiestromen</h3>
           <p className="text-xs text-gray-500 mb-1">Wat de accu, zon en het net daadwerkelijk deden (werkelijke VRM-data, geen planning)</p>
           <EnergieStromenChart />
         </div>
