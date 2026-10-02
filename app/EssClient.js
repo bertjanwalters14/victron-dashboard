@@ -12,11 +12,16 @@ const STROOM_KLEUR = { Bg: '#22d3ee', Pg: '#f97316', Pb: '#4ade80', Pc: '#a3e635
 // Celverschil-badge (max-cel - min-cel): dezelfde drempels als ess_logic.js v49 (CEL_VERSCHIL_DREMPEL
 // 0,05V triggert balanceren, CEL_VERSCHIL_HERSTELD 0,03V is weer gezond), zodat je in één oogopslag ziet
 // of balanceren eraan zit te komen -- data komt al mee in status.dbg, geen aparte call nodig.
+// v50.7: het verschil zegt alleen iets bij LEEG (<=40% SOC) of VOL (>=98%); in het midden is het altijd
+// klein (VRM-historie: nooit > 0,03V tussen 40 en 98%), dus daar tonen we neutraal "niet representatief"
+// i.p.v. een geruststellend groen. `celMeetmoment` ontbreekt zolang Node-RED nog op een oudere versie draait.
 function CelBalansBadge({ dbg }) {
   if (!dbg || dbg.celVerschil == null) return null;
   const v = dbg.celVerschil;
+  const meetmoment = dbg.celMeetmoment !== false;
   const stijl = dbg.balansHoldActief
     ? { kleur: 'text-blue-300 bg-blue-950/40 border-blue-800', label: 'balanceren: vastgehouden op 100%' }
+    : !meetmoment ? { kleur: 'text-gray-300 bg-gray-800/60 border-gray-600', label: 'niet representatief: meet bij leeg of vol' }
     : v >= 0.05 ? { kleur: 'text-red-300 bg-red-950/40 border-red-800', label: 'balanceren nodig/actief' }
     : v >= 0.03 ? { kleur: 'text-amber-300 bg-amber-950/40 border-amber-800', label: 'loopt op' }
     : { kleur: 'text-green-300 bg-green-950/40 border-green-800', label: 'gezond' };
