@@ -1,4 +1,5 @@
 import { upsertEnergieData } from '@/lib/db';
+import { nlDagVensterSec } from '@/lib/tijd';
 
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
@@ -27,17 +28,12 @@ function verkoopprijsKaal(spot) {
 
 async function haalSpotPrijzen(datumStr) {
   // Nederlandse dag loopt van 00:00 CEST = 22:00 UTC daarvoor t/m 23:59 CEST = 21:59 UTC
-  // We halen daarom prijzen op voor het UTC-venster dat de volledige Nederlandse dag dekt
-  const isDST  = isDaylightSaving(new Date(datumStr + 'T12:00:00Z'));
-  const offset = isDST ? 2 : 1; // uren verschil NL t.o.v. UTC
-
-  const vanUtc  = new Date(datumStr + 'T00:00:00Z');
-  vanUtc.setUTCHours(vanUtc.getUTCHours() - offset); // bijv. 22:00 UTC daarvoor
-  const totUtc  = new Date(datumStr + 'T23:59:59Z');
-  totUtc.setUTCHours(totUtc.getUTCHours() - offset); // bijv. 21:59 UTC
-
-  const vanStr = vanUtc.toISOString();
-  const totStr = totUtc.toISOString();
+  // We halen daarom prijzen op voor het UTC-venster dat de volledige Nederlandse dag dekt.
+  // Via lib/tijd.js: Vercel draait in UTC, dus Date#getTimezoneOffset() ziet nooit zomertijd (de dag
+  // liep daardoor in de zomer een uur te laat); Intl met expliciete tijdzone doet het wel goed.
+  const venster = nlDagVensterSec(datumStr);
+  const vanStr = new Date(venster.start * 1000).toISOString();
+  const totStr = new Date(venster.eind * 1000).toISOString();
 
   const res = await fetch(
     `https://api.energyzero.nl/v1/energyprices?fromDate=${vanStr}&tillDate=${totStr}&interval=4&usageType=1&inclBtw=false`
@@ -48,12 +44,8 @@ async function haalSpotPrijzen(datumStr) {
 }
 
 async function syncEénDag(datumStr) {
-  // Nederlandse dag-grenzen (CEST = UTC+2, CET = UTC+1)
-  // Door +02:00 mee te geven pakt JavaScript de juiste UTC-offset
-  const isDST = isDaylightSaving(new Date(datumStr + 'T12:00:00'));
-  const offset = isDST ? '+02:00' : '+01:00';
-  const start  = Math.floor(new Date(datumStr + 'T00:00:00' + offset).getTime() / 1000);
-  const end    = Math.floor(new Date(datumStr + 'T23:59:59' + offset).getTime() / 1000);
+  // Nederlandse dag-grenzen (CEST = UTC+2, CET = UTC+1), zie lib/tijd.js
+  const { start, eind: end } = nlDagVensterSec(datumStr);
 
   // VRM uurdata
   const victronRes = await fetch(
@@ -181,13 +173,6 @@ async function syncEénDag(datumStr) {
     nettoKosten:   nettoKosten.toFixed(2),
     salderingActief,
   };
-}
-
-// Simpele DST-check voor Nederland (laatste zondag maart t/m laatste zondag oktober)
-function isDaylightSaving(date) {
-  const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
-  const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
-  return date.getTimezoneOffset() < Math.max(jan, jul);
 }
 
 export async function GET(request) {

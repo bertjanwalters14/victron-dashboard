@@ -1,3 +1,5 @@
+import { nlVandaagStr, nlDagVensterSec } from '@/lib/tijd';
+
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
 
@@ -13,10 +15,13 @@ export async function GET(request) {
   }
 
   try {
-    // Vandaag
+    // Vandaag = de Nederlandse kalenderdag. De vorige versie nam de UTC-datum en 00:00 UTC als start:
+    // de eerste 2 uur van elke dag (00:00-02:00 lokaal) telden nooit mee, en tussen 00:00 en 02:00
+    // liep de teller nog op "gisteren". Zie lib/tijd.js.
     const nu = new Date();
-    const datumStr = nu.toISOString().split('T')[0];
-    const start = Math.floor(new Date(datumStr + 'T00:00:00').getTime() / 1000);
+    const datumStr = nlVandaagStr(nu);
+    const venster = nlDagVensterSec(datumStr);
+    const start = venster.start;
     const end   = Math.floor(nu.getTime() / 1000);
 
     // Victron uurdata van vandaag
@@ -29,7 +34,7 @@ export async function GET(request) {
 
     // Energieprijzen van vandaag
     const prijsRes = await fetch(
-      `https://api.energyzero.nl/v1/energyprices?fromDate=${datumStr}T00:00:00.000Z&tillDate=${datumStr}T23:59:59.000Z&interval=4&usageType=1&inclBtw=false`
+      `https://api.energyzero.nl/v1/energyprices?fromDate=${new Date(venster.start * 1000).toISOString()}&tillDate=${new Date(venster.eind * 1000).toISOString()}&interval=4&usageType=1&inclBtw=false`
     );
     const prijsData = await prijsRes.json();
     const prijzen   = prijsData?.Prices || [];

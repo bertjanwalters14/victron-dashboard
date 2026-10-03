@@ -1,12 +1,7 @@
+import { nlDagVensterSec } from '@/lib/tijd';
+
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
-
-// Simpele DST-check voor Nederland, zelfde als /api/sync.
-function isDaylightSaving(date) {
-  const jan = new Date(date.getFullYear(), 0, 1).getTimezoneOffset();
-  const jul = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
-  return date.getTimezoneOffset() < Math.max(jan, jul);
-}
 
 // NL-lokaal uur (0-23) van een timestamp, ONGEACHT de tijdzone van de server zelf (Vercel draait in
 // UTC) -- zonder dit zouden de uur-labels in de grafiek stilletjes 1-2 uur verschoven zijn.
@@ -29,12 +24,9 @@ export async function GET(request) {
     const datumStr = searchParams.get('datum') || vandaagStr;
     const isVandaag = datumStr === vandaagStr;
 
-    const isDST  = isDaylightSaving(new Date(datumStr + 'T12:00:00Z'));
-    const offset = isDST ? '+02:00' : '+01:00';
-    const start  = Math.floor(new Date(datumStr + 'T00:00:00' + offset).getTime() / 1000);
-    const end    = isVandaag
-      ? Math.floor(Date.now() / 1000)
-      : Math.floor(new Date(datumStr + 'T23:59:59' + offset).getTime() / 1000);
+    const venster = nlDagVensterSec(datumStr);
+    const start  = venster.start;
+    const end    = isVandaag ? Math.floor(Date.now() / 1000) : venster.eind;
 
     const victronRes = await fetch(
       `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
