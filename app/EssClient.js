@@ -145,7 +145,35 @@ const CAT_LABEL = { kopen: 'Kopen', verkopen: 'Verkopen', normaal: 'Zelfverbruik
 // puur afgeleid van de forecast-data zelf -- geen apart backend-veld nodig, werkt dus hetzelfde voor
 // vandaag/morgen/alles. TEMP_BALANS is hetzelfde omslagpunt als het graaddagen-model in ess_logic.js.
 const TEMP_BALANS = 13.5;
-function dagContext(data) {
+
+// Valt dit forecast-uur ("14:00" of "+1 14:00") binnen het [start, end)-venster van een schema?
+// Zelfde regel als scheduleActiveAt() in ess_logic.js (loopt het venster over midnacht, dan OF).
+function inSchema(uurLabel, sched) {
+  if (!sched || !sched.enabled) return false;
+  const toMin = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+  const t = Number(String(uurLabel).replace('+1 ', '').slice(0, 2)) * 60;
+  const s = toMin(sched.start), e = toMin(sched.end);
+  return s <= e ? (t >= s && t < e) : (t >= s || t < e);
+}
+
+// Waarom koopt de sturing? De forecast zegt zelf alleen cat 'kopen', dus leiden we de reden hier af:
+// uren binnen je "Accu altijd vol"-schema komen door die INSTELLING (niet door de planning), dan een
+// handmatig aangezette "Accu altijd vol", dan een balans-dag, en pas daarna gewone prijs-arbitrage.
+// (Vroeger stond hier altijd "piekverbruik opvangen", ook als het gewoon het schema was.)
+function koopReden(koopUren, ctx) {
+  const schema = koopUren.filter(d => inSchema(d.uur, ctx.keepSchedule)).length;
+  const rest = koopUren.length - schema;
+  const restTxt = ctx.keepManual ? '"Accu altijd vol" staat aan'
+    : ctx.balans ? 'om te balanceren'
+    : 'goedkoop inkopen voor de dure uren erna';
+  const schemaTxt = schema
+    ? `${schema > 0 && rest > 0 ? schema + ' ' : ''}door je "Accu altijd vol"-schema ${ctx.keepSchedule.start}–${ctx.keepSchedule.end}`
+    : '';
+  if (schema && rest) return `${schemaTxt}, ${rest} ${restTxt}`;
+  return schema ? schemaTxt : restTxt;
+}
+
+function dagContext(data, ctx = {}) {
   const temps = data.map(d => d.temp).filter(t => t != null);
   if (!temps.length) return null;   // geen forecast-data (Node-RED nog niet bijgewerkt, of geen dekking)
   const avgTemp = temps.reduce((s, t) => s + t, 0) / temps.length;
@@ -158,7 +186,7 @@ function dagContext(data) {
     : totalPv < 20 ? `wat zon (${totalPv.toFixed(0)} kWh)`
     : `veel zon (${totalPv.toFixed(0)} kWh)`;
 
-  const impact = koopUren > 0 ? `${koopUren} uur inkoop gepland (piekverbruik opvangen)`
+  const impact = koopUren > 0 ? `${koopUren} uur inkoop gepland (${koopReden(data.filter(d => d.cat === 'kopen'), ctx)})`
     : verkoopUren > 0 ? `${verkoopUren} uur verkoop gepland`
     : 'vooral zelfverbruik';
 
@@ -316,7 +344,9 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
     if (dag === 'morgen') return morgen;
     return true;
   });
-  const contextZin = dagContext(data);
+  // Een effectief-AAN "Accu altijd vol" terwijl het schema NU niet actief is = handmatig aangezet.
+  const keepManual = !!keepCharged && !inSchema(nuUur, keepChargedSchedule);
+  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans });
 
   function toggleLaden() {
     const next = !aan;
