@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import BatteryBadge from './BatteryBadge';
+import TabBar from './TabBar';
 
 const BATTERIJ_KOSTEN   = 11252;
 const INSTALLATIE_DATUM = new Date('2026-04-04');
@@ -29,7 +30,8 @@ export default function DashboardClient({ data }) {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-5xl mx-auto px-4 py-6 md:py-10">
+      <div className="max-w-5xl mx-auto px-4 py-5 md:py-8">
+        <TabBar />
 
         <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4 mb-8">
           <div>
@@ -38,8 +40,6 @@ export default function DashboardClient({ data }) {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <RefreshButton />
-            <a href="/jaaroverzicht" className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-sm font-semibold whitespace-nowrap">📅 Jaaroverzicht →</a>
-            <a href="/ess" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold whitespace-nowrap">⚡ Live sturing →</a>
             <AccuBadge />
           </div>
         </div>

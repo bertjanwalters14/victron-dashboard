@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import TabBar from './TabBar';
 
 const VOORSCHOT_PER_MAAND = 15;
 
@@ -209,11 +210,9 @@ export default function JaaroverzichtClient({ data }) {
 
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-3xl mx-auto px-4 py-6 md:py-10">
-        <div className="flex items-center gap-3 mb-6">
-          <a href="/" className="text-gray-400 hover:text-white text-xl">←</a>
-          <h1 className="text-2xl md:text-3xl font-bold">Jaaroverzicht</h1>
-        </div>
+      <div className="max-w-3xl mx-auto px-4 py-5 md:py-8">
+        <TabBar />
+        <h1 className="text-2xl md:text-3xl font-bold mb-6">Jaaroverzicht</h1>
 
         {cycli.length === 0 && (
           <div className="bg-gray-800 rounded-xl p-6 text-center text-gray-500">Nog geen data beschikbaar</div>

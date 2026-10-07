@@ -2,36 +2,49 @@
 import { useState, useEffect, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
-import BatteryBadge from './BatteryBadge';
+import TabBar from './TabBar';
 
 // Energiestromen-kleuren, losjes naar VRM's eigen palet (cyaan=accu->net, oranje=PV->net, groen=PV->accu,
 // limoen=PV->verbruik, blauw=accu->verbruik, rood/paars=van het net -- die twee als NEGATIEF getoond,
 // zelfde conventie als VRM: alles wat van het net komt zakt onder de nullijn).
 const STROOM_KLEUR = { Bg: '#22d3ee', Pg: '#f97316', Pb: '#4ade80', Pc: '#a3e635', Bc: '#3b82f6', Gc: '#f87171', Gb: '#c084fc' };
 
-// Celverschil-badge (max-cel - min-cel): dezelfde drempels als ess_logic.js v49 (CEL_VERSCHIL_DREMPEL
-// 0,05V triggert balanceren, CEL_VERSCHIL_HERSTELD 0,03V is weer gezond), zodat je in één oogopslag ziet
-// of balanceren eraan zit te komen -- data komt al mee in status.dbg, geen aparte call nodig.
-// v50.7: het verschil zegt alleen iets bij LEEG (<=40% SOC) of VOL (>=98%); in het midden is het altijd
-// klein (VRM-historie: nooit > 0,03V tussen 40 en 98%), dus daar tonen we neutraal "niet representatief"
-// i.p.v. een geruststellend groen. `celMeetmoment` ontbreekt zolang Node-RED nog op een oudere versie draait.
-function CelBalansBadge({ dbg }) {
-  if (!dbg || dbg.celVerschil == null) return null;
-  const v = dbg.celVerschil;
-  const meetmoment = dbg.celMeetmoment !== false;
-  const stijl = dbg.balansHoldActief
-    ? { kleur: 'text-blue-300 bg-blue-950/40 border-blue-800', label: 'balanceren: vastgehouden op 100%' }
-    : !meetmoment ? { kleur: 'text-gray-300 bg-gray-800/60 border-gray-600', label: 'niet representatief: meet bij leeg of vol' }
-    : v >= 0.05 ? { kleur: 'text-red-300 bg-red-950/40 border-red-800', label: 'balanceren nodig/actief' }
-    : v >= 0.03 ? { kleur: 'text-amber-300 bg-amber-950/40 border-amber-800', label: 'loopt op' }
-    : { kleur: 'text-green-300 bg-green-950/40 border-green-800', label: 'gezond' };
+// Gedeelde kaart-stijl (nieuwe look): vlak, subtiele rand, grote afronding.
+const KAART = 'rounded-2xl border border-gray-800 bg-gray-900/60';
+
+function Tegel({ label, waarde, sub, subKleur }) {
   return (
-    <div className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border mb-2 ${stijl.kleur}`}
-      title={`min ${dbg.celMin?.toFixed(3)}V / max ${dbg.celMax?.toFixed(3)}V`}>
-      🔋 Celverschil: <b>{v.toFixed(3)}V</b> ({stijl.label})
+    <div className="rounded-xl bg-gray-800/60 px-3.5 py-3">
+      <div className="text-xs text-gray-400">{label}</div>
+      <div className="text-xl font-semibold tabular-nums">{waarde}</div>
+      {sub && <div className={`text-xs ${subKleur || 'text-gray-400'}`}>{sub}</div>}
     </div>
   );
 }
+
+// Celverschil-tegel (max-cel - min-cel): dezelfde drempels als ess_logic.js (CEL_VERSCHIL_DREMPEL 0,05V
+// triggert balanceren, CEL_VERSCHIL_HERSTELD 0,03V is weer gezond). Het verschil zegt alleen iets bij LEEG
+// (<=40% SOC) of VOL (>=98%); in het midden is het altijd klein (VRM-historie: nooit > 0,03V tussen 40 en
+// 98%), dus daar tonen we neutraal "alleen bij leeg of vol" i.p.v. een geruststellend groen.
+// `celMeetmoment` ontbreekt zolang Node-RED op een oudere versie draait -> dan telt het wel gewoon.
+function CelTegel({ dbg }) {
+  if (!dbg || dbg.celVerschil == null) return <Tegel label="Celverschil" waarde="—" sub="geen meting" />;
+  const v = dbg.celVerschil;
+  const st = dbg.balansHoldActief ? ['vastgehouden op 100%', 'text-blue-300']
+    : dbg.celMeetmoment === false ? ['alleen bij leeg of vol', 'text-gray-400']
+    : v >= 0.05 ? ['balanceren nodig', 'text-red-300']
+    : v >= 0.03 ? ['loopt op', 'text-amber-300']
+    : ['gezond', 'text-green-300'];
+  return <Tegel label="Celverschil" waarde={`${v.toFixed(3).replace('.', ',')} V`} sub={st[0]} subKleur={st[1]} />;
+}
+
+// Pakspanning-tegel: lage spanning voor de SOC is de tweede balans-trigger (ess_logic.js v50.9).
+function PakTegel({ dbg }) {
+  if (!dbg || dbg.vPack == null) return <Tegel label="Pakspanning" waarde="—" sub="geen meting" />;
+  const st = dbg.vPackKritiek ? ['te laag voor de SOC', 'text-red-300'] : ['gezond', 'text-green-300'];
+  return <Tegel label="Pakspanning" waarde={`${dbg.vPack.toFixed(1).replace('.', ',')} V`} sub={st[0]} subKleur={st[1]} />;
+}
+
 
 // Vaste assen i.p.v. per-dag meeschalend, zodat de balkhoogte/lijnpositie zelf al laat zien of het een
 // zonnige/koude dag was -- met een dynamische as (die elke dag opnieuw naar de eigen max/min schaalt) ziet
@@ -327,6 +340,102 @@ function ReserveEditor({ initial }) {
   );
 }
 
+const kw = (w) => (w / 1000).toFixed(1).replace('.', ',');
+
+// Live vermogens (zon, accu, net, huis) van dit moment uit /api/nu (VRM, 30 s gecachet, geen Neon).
+// Ververst elke 30 s zolang de pagina open staat.
+function LiveStroom() {
+  const [nu, setNu] = useState(null);
+  useEffect(() => {
+    let genegeerd = false;
+    async function laad() {
+      try {
+        const j = await (await fetch('/api/nu')).json();
+        if (!genegeerd && j.success) setNu(j);
+      } catch {}
+    }
+    laad();
+    const iv = setInterval(laad, 30000);
+    return () => { genegeerd = true; clearInterval(iv); };
+  }, []);
+
+  const rij = nu ? [
+    { label: 'Zon', punt: 'bg-amber-400', waarde: `${kw(nu.zonW)} kW`, sub: nu.zonW > 50 ? 'opwekking' : 'geen zon', subKleur: 'text-gray-400' },
+    { label: 'Accu', punt: 'bg-blue-500', waarde: `${nu.accuW > 0 ? '+' : ''}${kw(nu.accuW)} kW`,
+      sub: nu.accuW > 100 ? 'laden' : nu.accuW < -100 ? 'ontladen' : 'rust', subKleur: nu.accuW > 100 ? 'text-blue-300' : nu.accuW < -100 ? 'text-green-300' : 'text-gray-400' },
+    { label: 'Net', punt: 'bg-purple-400', waarde: `${nu.netW > 0 ? '+' : ''}${kw(nu.netW)} kW`,
+      sub: nu.netW > 100 ? 'inkoop' : nu.netW < -100 ? 'teruglevering' : 'in balans', subKleur: nu.netW > 100 ? 'text-red-300' : nu.netW < -100 ? 'text-green-300' : 'text-gray-400' },
+    { label: 'Huis', punt: 'bg-gray-400', waarde: `${kw(nu.huisW)} kW`, sub: 'verbruik nu', subKleur: 'text-gray-400' },
+  ] : [];
+  return (
+    <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+      {(nu ? rij : [0, 1, 2, 3].map(i => ({ label: ['Zon', 'Accu', 'Net', 'Huis'][i], punt: 'bg-gray-600', waarde: '—' }))).map(t => (
+        <div key={t.label} className="rounded-xl bg-gray-800/60 px-3.5 py-3">
+          <div className="flex items-center gap-2 text-xs text-gray-400"><span className={`h-2 w-2 rounded-full ${t.punt}`} />{t.label}</div>
+          <div className="text-xl font-semibold tabular-nums">{t.waarde}</div>
+          {t.sub && <div className={`text-xs ${t.subKleur}`}>{t.sub}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Statuskaart: modus, SOC groot, voortgangsbalk met de verkoop-bodem (reserve) als streepje erin.
+function HeroKaart({ s, bijgewerkt, reserveSoc }) {
+  const soc = s.soc != null ? Math.round(s.soc) : null;
+  const kwh = soc != null ? (soc / 100) * 32 : null;
+  const balkKleur = soc == null ? 'bg-gray-600' : soc < 20 ? 'bg-red-500' : soc < 50 ? 'bg-amber-500' : 'bg-green-500';
+  const mk = modeColor(s.mode);
+  const tijd = bijgewerkt ? new Date(bijgewerkt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }) : '—';
+  return (
+    <div className={`${KAART} p-5`}>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ background: mk + '26', color: mk }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: mk }} />{s.mode || '—'}
+        </span>
+        <span className="text-xs text-gray-500">bijgewerkt {tijd}</span>
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-5xl font-semibold leading-none tabular-nums">{soc ?? '—'}</span>
+        <span className="text-xl text-gray-400">%</span>
+        {kwh != null && <span className="ml-3 text-sm text-gray-400">{kwh.toFixed(0)} kWh in de accu</span>}
+      </div>
+      <div className="relative mt-4 h-2 rounded-full bg-gray-800">
+        <div className={`h-full rounded-full ${balkKleur}`} style={{ width: `${soc ?? 0}%` }} />
+        <div className="absolute -top-1 h-4 w-px bg-gray-300" style={{ left: `${reserveSoc}%` }} />
+      </div>
+      <div className="relative mt-1.5 h-4 text-[11px] text-gray-500">
+        <span className="absolute left-0">0%</span>
+        <span className="absolute -translate-x-1/2 text-gray-400" style={{ left: `${reserveSoc}%` }}>reserve {reserveSoc}%</span>
+        <span className="absolute right-0">100%</span>
+      </div>
+      {s.balansDagen != null && <div className="mt-2 text-xs text-gray-500">Laatste 100%: {s.balansDagen === 0 ? 'vandaag' : `${s.balansDagen} dgn geleden`}</div>}
+    </div>
+  );
+}
+
+// Eén knop als kaart met een schakelaar. De regel eronder (sub) wordt amber zodra er een schema aan staat,
+// zodat een vergeten schema meteen opvalt. De ScheduleEditor eronder blijft de plek om het venster in te stellen.
+function SchakelKaart({ titel, sub, subKleur, aan, onToggle, bezig, aanKleur, children }) {
+  return (
+    <div className={`${KAART} flex flex-col gap-2 p-4`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">{titel}</div>
+          <div className={`mt-0.5 text-xs ${subKleur || 'text-gray-400'}`}>{sub}</div>
+        </div>
+        <button type="button" role="switch" aria-checked={aan} aria-label={titel} onClick={onToggle} disabled={bezig}
+          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${aan ? aanKleur : 'bg-gray-700'} ${bezig ? 'opacity-60' : ''}`}>
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${aan ? 'left-[22px]' : 'left-0.5'}`} />
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const schemaTxt = (sch) => (sch && sch.enabled ? `Schema ${sch.start}–${sch.end} staat aan` : null);
+
 export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze, laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
   const alle = (forecast || []).map(d => ({ ...d }));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
@@ -366,99 +475,74 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
     startTransition(() => setVerkoopPauze(next));
   }
 
+  const prijsNu = s.buy != null ? `€${Number(s.buy).toFixed(3).replace('.', ',')}` : '—';
+
   return (
     <main className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-5xl mx-auto px-4 py-6">
-        <a href="/" className="text-sm text-blue-400 hover:text-blue-300">← Terug naar dashboard</a>
-        <div className="flex items-center justify-between flex-wrap gap-3 mb-1 mt-2">
-          <h1 className="text-2xl md:text-3xl font-bold">⚡ ESS Sturing (live)</h1>
-          <div className="flex items-center gap-2.5">
-            <span className="px-2.5 py-1 rounded-md text-xs font-semibold text-white" style={{ background: modeColor(s.mode) }}>
-              {s.mode || '—'}
-            </span>
-            <BatteryBadge pct={s.soc} />
-          </div>
-        </div>
-        <p className="text-gray-500 text-xs mb-4">
-          Laatste update: {bijgewerkt ? new Date(bijgewerkt).toLocaleString('nl-NL') : '—'}
-          {s.balansDagen != null ? ` · Laatste 100%: ${s.balansDagen} dgn geleden` : ''}
-        </p>
+      <div className="mx-auto max-w-5xl px-4 py-5 md:py-8">
+        <TabBar />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
-            <button
-              onClick={toggleLaden}
-              disabled={pending}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${aan ? 'bg-blue-600 hover:bg-blue-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
-            >
-              Laden uit net: {aan ? 'AAN' : 'UIT'}
-            </button>
-            <span className="text-xs text-gray-400" title="Grid-arbitrage actief (koopt uit net op goedkope uren)">
-              {aan ? '⚠️ Grid-arbitrage' : 'Alleen PV-laden'}
-            </span>
+        <section className="mb-3 grid gap-3 md:grid-cols-[1.4fr_1fr]">
+          <HeroKaart s={s} bijgewerkt={bijgewerkt} reserveSoc={reserveSoc} />
+          <div className="grid grid-cols-2 content-start gap-3">
+            <Tegel label="Prijs nu" waarde={prijsNu} sub="inkoop all-in" />
+            <Tegel label="Verkoop nu" waarde={s.sell != null ? `€${Number(s.sell).toFixed(3).replace('.', ',')}` : '—'} sub="teruglevering" />
+            <CelTegel dbg={s.dbg} />
+            <PakTegel dbg={s.dbg} />
+          </div>
+        </section>
+
+        <LiveStroom />
+
+        <section className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <SchakelKaart titel="Laden uit net" aan={aan} onToggle={toggleLaden} bezig={pending} aanKleur="bg-blue-600"
+            sub={schemaTxt(laadVanNetSchedule) || (aan ? 'Grid-arbitrage actief' : 'Alleen PV-laden')}
+            subKleur={schemaTxt(laadVanNetSchedule) ? 'text-amber-300' : aan ? 'text-blue-300' : 'text-gray-400'}>
             <ScheduleEditor scheduleKey="laad_van_net" initial={laadVanNetSchedule} />
-          </div>
-
-          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
-            <button
-              onClick={toggleVol}
-              disabled={pending}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${vol ? 'bg-amber-500 hover:bg-amber-400 text-black' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
-            >
-              Accu altijd vol: {vol ? 'AAN' : 'UIT'}
-            </button>
-            <span className="text-xs text-gray-400" title="Accu wordt vol gehouden (geen verkoop/ontlading) — handel gepauzeerd">
-              {vol ? '🔋 Vol gehouden' : 'Normale handel'}
-            </span>
+          </SchakelKaart>
+          <SchakelKaart titel="Accu altijd vol" aan={vol} onToggle={toggleVol} bezig={pending} aanKleur="bg-amber-500"
+            sub={schemaTxt(keepChargedSchedule) || (vol ? 'Vol gehouden, geen verkoop' : 'Normale handel')}
+            subKleur={schemaTxt(keepChargedSchedule) || vol ? 'text-amber-300' : 'text-gray-400'}>
             <ScheduleEditor scheduleKey="keep_charged" initial={keepChargedSchedule} />
-          </div>
-
-          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
-            <button
-              onClick={togglePauze}
-              disabled={pending}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${pauze ? 'bg-red-600 hover:bg-red-500' : 'bg-gray-600 hover:bg-gray-500'} ${pending ? 'opacity-60' : ''}`}
-            >
-              Verkopen: {pauze ? 'GEPAUZEERD' : 'AAN'}
-            </button>
-            <span className="text-xs text-gray-400" title="Alleen verkopen stilgezet — laden/zelfverbruik gaan gewoon door">
-              {pauze ? '⏸️ Stilgezet' : 'Normaal gedrag'}
-            </span>
+          </SchakelKaart>
+          <SchakelKaart titel="Verkopen pauzeren" aan={pauze} onToggle={togglePauze} bezig={pending} aanKleur="bg-red-600"
+            sub={schemaTxt(verkoopPauzeSchedule) || (pauze ? 'Verkopen stilgezet' : 'Verkopen loopt normaal')}
+            subKleur={schemaTxt(verkoopPauzeSchedule) ? 'text-amber-300' : pauze ? 'text-red-300' : 'text-gray-400'}>
             <ScheduleEditor scheduleKey="verkoop_pauze" initial={verkoopPauzeSchedule} />
-          </div>
-
-          <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5">
-            <div className="text-xs text-gray-400">Verkoop-bodem</div>
+          </SchakelKaart>
+          <div className={`${KAART} flex flex-col gap-2 p-4`}>
+            <div className="text-sm font-semibold">Verkoop-bodem</div>
+            <div className="text-xs text-gray-400">Onder dit niveau verkoopt hij niet</div>
             <ReserveEditor initial={reserveSoc} />
           </div>
-        </div>
+        </section>
 
         {s.balansDoel ? (
-          <div className="flex items-center gap-2 mb-6 bg-amber-900/40 border border-amber-700 rounded-xl p-3 text-sm text-amber-200">
-            🔋 Balancering nodig ({s.balansDagen} dagen geen 100%) — gepland op zonnigste dag: <b>{s.balansDoel}</b>
+          <div className="mb-3 flex items-center gap-2 rounded-2xl border border-amber-800/60 bg-amber-900/30 p-3 text-sm text-amber-200">
+            Balancering nodig ({s.balansDagen} dagen geen 100%), gepland op de zonnigste dag: <b>{s.balansDoel}</b>
           </div>
-        ) : <div className="mb-3" />}
+        ) : null}
 
-        <div className="bg-gray-800 rounded-xl p-4 md:p-5">
-          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <h2 className="font-semibold text-gray-200">📊 Voorspelling</h2>
-            <div className="flex rounded-lg overflow-hidden border border-gray-700 text-sm">
+        <section className={`${KAART} mb-3 p-4 md:p-5`}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold text-gray-200">Voorspelling</h2>
+            <div className="inline-flex gap-1 rounded-full bg-gray-800/80 p-1 text-sm">
               {[['vandaag', 'Vandaag'], ['morgen', 'Morgen'], ['alles', 'Alles']].map(([k, label]) => (
                 <button key={k} onClick={() => setDag(k)}
                   disabled={k === 'morgen' && !heeftMorgen}
-                  className={`px-3 py-1.5 font-medium transition ${dag === k ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} ${k === 'morgen' && !heeftMorgen ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                  className={`rounded-full px-3 py-1 font-medium transition-colors ${dag === k ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'} ${k === 'morgen' && !heeftMorgen ? 'cursor-not-allowed opacity-40' : ''}`}>
                   {label}
                 </button>
               ))}
             </div>
           </div>
           {contextZin && (
-            <div className="text-sm text-gray-300 bg-gray-900/60 border border-gray-700 rounded-lg px-3 py-2 mb-3">
+            <div className="mb-4 rounded-xl bg-gray-800/50 px-3 py-2 text-sm text-gray-300">
               {contextZin}
             </div>
           )}
 
-          <h3 className="text-xs font-semibold text-gray-400 mb-1">🔋 Laden &amp; prijs</h3>
+          <h3 className="mb-1 text-xs font-semibold text-gray-400">Laden en prijs</h3>
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -479,16 +563,19 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <Line yAxisId="soc" type="monotone" dataKey="soc" name="SOC %" stroke="#a855f7" dot={false} strokeWidth={2.5} />
             </ComposedChart>
           </ResponsiveContainer>
-          <p className="text-xs text-gray-500 mt-2 mb-5">
+          <p className="mt-2 text-xs text-gray-500">
             <span style={{ color: '#3b82f6' }}>■</span> kopen ·
             <span style={{ color: '#22c55e' }}> ■</span> verkopen ·
             <span style={{ color: '#f59e0b' }}> ■</span> normaal ·
             <span style={{ color: '#06b6d4' }}> ■</span> gratis (negatief) ·
             <span style={{ color: '#c084fc' }}> ■</span> PV → net
           </p>
+        </section>
 
-          <h3 className="text-xs font-semibold text-gray-400 mb-1">🌤️ Weer</h3>
-          <ResponsiveContainer width="100%" height={200}>
+        <section className={`${KAART} mb-3 p-4 md:p-5`}>
+          <h2 className="mb-1 font-semibold text-gray-200">Weer en zon</h2>
+          <p className="mb-2 text-xs text-gray-500">Zon per uur op een vaste as van 0 tot {PV_MAX_KWH_PER_UUR} kWh, zodat een zonnige en een sombere dag er ook echt anders uitzien</p>
+          <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
@@ -501,12 +588,13 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               <Line yAxisId="temp" type="monotone" dataKey="temp" name="Temperatuur (°C)" stroke="#f87171" dot={false} strokeWidth={2} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
+        </section>
 
-          <h3 className="text-xs font-semibold text-gray-400 mb-1 mt-5">🔋 Energiestromen</h3>
-          <p className="text-xs text-gray-500 mb-1">Wat de accu, zon en het net daadwerkelijk deden (werkelijke VRM-data, geen planning)</p>
-          <CelBalansBadge dbg={s.dbg} />
+        <section className={`${KAART} p-4 md:p-5`}>
+          <h2 className="mb-1 font-semibold text-gray-200">Energiestromen</h2>
+          <p className="mb-2 text-xs text-gray-500">Wat de accu, zon en het net daadwerkelijk deden (werkelijke VRM-data, geen planning)</p>
           <EnergieStromenChart />
-        </div>
+        </section>
       </div>
     </main>
   );
