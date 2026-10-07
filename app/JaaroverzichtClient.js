@@ -209,7 +209,7 @@ export default function JaaroverzichtClient({ data }) {
   const cycli = berekenCycli(maanden);
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="min-h-screen bg-gray-950 text-gray-50">
       <div className="max-w-3xl mx-auto px-4 py-5 md:py-8">
         <TabBar />
         <h1 className="text-2xl md:text-3xl font-bold mb-6">Jaaroverzicht</h1>

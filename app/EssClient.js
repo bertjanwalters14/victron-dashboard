@@ -49,6 +49,9 @@ function PakTegel({ dbg }) {
 // Vaste assen i.p.v. per-dag meeschalend, zodat de balkhoogte/lijnpositie zelf al laat zien of het een
 // zonnige/koude dag was -- met een dynamische as (die elke dag opnieuw naar de eigen max/min schaalt) ziet
 // een bewolkte dag er even "vol" uit als een stralende, en dat is precies wat je niet wil kunnen zien.
+// Legendatekst in themakleur (recharts kleurt hem anders in de serie-kleur, o.a. geel op wit onleesbaar).
+const legendTekst = (v) => <span style={{ color: 'var(--chart-tick)' }}>{v}</span>;
+
 const PV_MAX_KWH_PER_UUR = 7;   // ~6,6 kWp AC-gekoppelde PV (zie CLAUDE.md), + kleine marge
 const TEMP_MIN_C = -5;
 const TEMP_MAX_C = 35;
@@ -56,7 +59,7 @@ const TEMP_MAX_C = 35;
 function StroomTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null;
   return (
-    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '8px 11px', color: '#fff', fontSize: 12, lineHeight: 1.6 }}>
+    <div style={{ background: 'var(--chart-tip-bg)', border: '1px solid var(--chart-tip-border)', borderRadius: 8, padding: '8px 11px', color: 'var(--chart-tip-text)', fontSize: 12, lineHeight: 1.6 }}>
       <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{label}</div>
       {payload.filter(p => Math.abs(p.value) > 0.01).map(p => (
         <div key={p.dataKey} style={{ color: p.fill }}>{p.name}: {Math.abs(p.value).toFixed(2)} kWh</div>
@@ -123,11 +126,11 @@ function EnergieStromenChart() {
     {nav}
     <ResponsiveContainer width="100%" height={260}>
       <ComposedChart data={uren} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="15%" stackOffset="sign">
-        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-        <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
-        <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+        <XAxis dataKey="uur" tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} interval="preserveStartEnd" minTickGap={24} />
+        <YAxis tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} />
         <Tooltip content={<StroomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Legend wrapperStyle={{ fontSize: 11 }} formatter={legendTekst} />
         <ReferenceLine y={0} stroke="#6b7280" />
         <Bar dataKey="Bg" name="Accu → net" stackId="stroom" fill={STROOM_KLEUR.Bg} />
         <Bar dataKey="Pg" name="PV → net" stackId="stroom" fill={STROOM_KLEUR.Pg} />
@@ -210,11 +213,11 @@ function EssTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
   return (
-    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '8px 11px', color: '#fff', fontSize: 12, lineHeight: 1.5 }}>
+    <div style={{ background: 'var(--chart-tip-bg)', border: '1px solid var(--chart-tip-border)', borderRadius: 8, padding: '8px 11px', color: 'var(--chart-tip-text)', fontSize: 12, lineHeight: 1.5 }}>
       <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{d.uur}</div>
       <div>Prijs all-in: <b>€{Number(d.prijs).toFixed(3)}</b></div>
       <div style={{ color: '#a855f7' }}>SOC: {d.soc}%</div>
-      <div style={{ color: '#9ca3af', marginTop: 2 }}>{CAT_LABEL[d.cat] || d.cat}</div>
+      <div style={{ color: 'var(--chart-tick)', marginTop: 2 }}>{CAT_LABEL[d.cat] || d.cat}</div>
     </div>
   );
 }
@@ -223,7 +226,7 @@ function WeerTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
   return (
-    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, padding: '8px 11px', color: '#fff', fontSize: 12, lineHeight: 1.5 }}>
+    <div style={{ background: 'var(--chart-tip-bg)', border: '1px solid var(--chart-tip-border)', borderRadius: 8, padding: '8px 11px', color: 'var(--chart-tip-text)', fontSize: 12, lineHeight: 1.5 }}>
       <div style={{ fontWeight: 'bold', marginBottom: 4, fontSize: 13 }}>{d.uur}</div>
       <div style={{ color: '#fde047' }}>Zon: {Number(d.pv).toFixed(1)} kWh</div>
       {d.temp != null && <div style={{ color: '#f87171' }}>Temperatuur: {Number(d.temp).toFixed(1)}°C</div>}
@@ -293,13 +296,13 @@ function ScheduleEditor({ scheduleKey, initial }) {
         <input
           type="time" value={cfg.start} disabled={!cfg.enabled}
           onChange={e => update({ start: e.target.value })}
-          className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40 w-full"
+          className="bg-gray-700 rounded px-1.5 py-0.5 text-gray-50 disabled:opacity-40 w-full"
         />
         <span>tot</span>
         <input
           type="time" value={cfg.end} disabled={!cfg.enabled}
           onChange={e => update({ end: e.target.value })}
-          className="bg-gray-700 rounded px-1.5 py-0.5 text-white disabled:opacity-40 w-full"
+          className="bg-gray-700 rounded px-1.5 py-0.5 text-gray-50 disabled:opacity-40 w-full"
         />
       </div>
       {cfg.enabled && <DayBlock start={cfg.start} end={cfg.end} />}
@@ -322,7 +325,7 @@ function ReserveEditor({ initial }) {
 
   return (
     <Dropdown open={open} onToggle={() => setOpen(o => !o)} trigger={<>🔋 {pct}%</>}>
-      <div className="text-sm font-semibold text-white mb-1">Verkoop-bodem: {pct}%</div>
+      <div className="text-sm font-semibold text-gray-50 mb-1">Verkoop-bodem: {pct}%</div>
       <input
         type="range" min={10} max={40} step={1} value={pct}
         onChange={e => setPct(Number(e.target.value))}
@@ -478,7 +481,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
   const prijsNu = s.buy != null ? `€${Number(s.buy).toFixed(3).replace('.', ',')}` : '—';
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="min-h-screen bg-gray-950 text-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-5 md:py-8">
         <TabBar />
 
@@ -530,7 +533,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
               {[['vandaag', 'Vandaag'], ['morgen', 'Morgen'], ['alles', 'Alles']].map(([k, label]) => (
                 <button key={k} onClick={() => setDag(k)}
                   disabled={k === 'morgen' && !heeftMorgen}
-                  className={`rounded-full px-3 py-1 font-medium transition-colors ${dag === k ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'} ${k === 'morgen' && !heeftMorgen ? 'cursor-not-allowed opacity-40' : ''}`}>
+                  className={`rounded-full px-3 py-1 font-medium transition-colors ${dag === k ? 'bg-gray-600 text-gray-50' : 'text-gray-400 hover:text-gray-200'} ${k === 'morgen' && !heeftMorgen ? 'cursor-not-allowed opacity-40' : ''}`}>
                   {label}
                 </button>
               ))}
@@ -545,18 +548,18 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           <h3 className="mb-1 text-xs font-semibold text-gray-400">Laden en prijs</h3>
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
-              <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+              <XAxis dataKey="uur" tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} interval="preserveStartEnd" minTickGap={24} />
+              <YAxis yAxisId="prijs" tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} />
+              <YAxis yAxisId="soc" orientation="right" domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} />
               <Tooltip content={<EssTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ReferenceLine yAxisId="prijs" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7}
-                label={{ value: '▼ nu', position: 'top', fill: '#ffffff', fontSize: 11 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} formatter={legendTekst} />
+              <ReferenceLine yAxisId="prijs" x={nuUur} stroke="var(--chart-ref)" strokeDasharray="4 3" strokeOpacity={0.7}
+                label={{ value: '▼ nu', position: 'top', fill: 'var(--chart-ref)', fontSize: 11 }} />
               <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)" maxBarSize={16} radius={[3, 3, 0, 0]} fillOpacity={0.9}>
                 {data.map((d, i) => (
                   <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'}
-                    stroke={d.uur === nuUur ? '#ffffff' : 'none'} strokeWidth={d.uur === nuUur ? 2 : 0}
+                    stroke={d.uur === nuUur ? 'var(--chart-ref)' : 'none'} strokeWidth={d.uur === nuUur ? 2 : 0}
                     fillOpacity={d.uur === nuUur ? 1 : 0.9} />
                 ))}
               </Bar>
@@ -577,13 +580,13 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           <p className="mb-2 text-xs text-gray-500">Zon per uur op een vaste as van 0 tot {PV_MAX_KWH_PER_UUR} kWh, zodat een zonnige en een sombere dag er ook echt anders uitzien</p>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 5 }} barCategoryGap="22%">
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="uur" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={24} />
-              <YAxis yAxisId="zon" domain={[0, PV_MAX_KWH_PER_UUR]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-              <YAxis yAxisId="temp" orientation="right" domain={[TEMP_MIN_C, TEMP_MAX_C]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+              <XAxis dataKey="uur" tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} interval="preserveStartEnd" minTickGap={24} />
+              <YAxis yAxisId="zon" domain={[0, PV_MAX_KWH_PER_UUR]} tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} />
+              <YAxis yAxisId="temp" orientation="right" domain={[TEMP_MIN_C, TEMP_MAX_C]} tick={{ fontSize: 10, fill: 'var(--chart-tick)' }} />
               <Tooltip content={<WeerTooltip />} cursor={{ fill: 'rgba(255,255,255,0.06)' }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <ReferenceLine yAxisId="zon" x={nuUur} stroke="#ffffff" strokeDasharray="4 3" strokeOpacity={0.7} />
+              <Legend wrapperStyle={{ fontSize: 12 }} formatter={legendTekst} />
+              <ReferenceLine yAxisId="zon" x={nuUur} stroke="var(--chart-ref)" strokeDasharray="4 3" strokeOpacity={0.7} />
               <Bar yAxisId="zon" dataKey="pv" name="Zon (kWh)" fill="#fde047" fillOpacity={0.85} maxBarSize={16} radius={[3, 3, 0, 0]} />
               <Line yAxisId="temp" type="monotone" dataKey="temp" name="Temperatuur (°C)" stroke="#f87171" dot={false} strokeWidth={2} connectNulls />
             </ComposedChart>

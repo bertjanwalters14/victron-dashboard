@@ -29,7 +29,7 @@ export default function DashboardClient({ data }) {
   const gisterenMeerwaarde = aantalDagenData > 0 ? parseFloat(data[aantalDagenData - 1].bat_meerwaarde ?? data[aantalDagenData - 1].winst_euro ?? 0) : null;
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
+    <main className="min-h-screen bg-gray-950 text-gray-50">
       <div className="max-w-5xl mx-auto px-4 py-5 md:py-8">
         <TabBar />
 
@@ -104,7 +104,7 @@ function Card({ label, value, color, sub, info }) {
       {open && (
         <div className="absolute z-10 top-full left-0 mt-2 w-56 bg-gray-700 text-gray-200 text-xs rounded-lg p-3 shadow-lg">
           {info}
-          <button onClick={() => setOpen(false)} className="mt-2 text-gray-400 hover:text-white block">Sluiten ✕</button>
+          <button onClick={() => setOpen(false)} className="mt-2 text-gray-400 hover:text-gray-50 block">Sluiten ✕</button>
         </div>
       )}
     </div>
@@ -156,9 +156,9 @@ function LiveVandaag({ gisterenWinst }) {
   return (
     <div className="bg-gradient-to-r from-green-900 to-emerald-800 rounded-xl p-5 mb-6 flex justify-between items-center">
       <div>
-        <p className="text-green-300 text-sm font-medium">⚡ Vandaag (lopend)</p>
+        <p className="text-green-200 text-sm font-medium">⚡ Vandaag (lopend)</p>
         <p className="text-3xl font-bold text-white mt-1">{loading ? '...' : `€${winst}`}</p>
-        {notes && <p className="text-green-400 text-xs mt-1">{notes}</p>}
+        {notes && <p className="text-green-200 text-xs mt-1">{notes}</p>}
       </div>
       <button onClick={fetchLive} className="bg-green-700 hover:bg-green-600 text-white text-sm px-3 py-2 rounded-lg transition-colors">
         🔄 Nu verversen
