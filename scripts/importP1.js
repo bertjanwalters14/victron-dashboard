@@ -3,7 +3,8 @@ const path = require('path');
 
 // Pas dit aan naar jouw CSV bestandslocatie
 const CSV_PAD = path.join(__dirname, '..', 'P1e-2022-5-01-2026-4-07.csv');
-const API_URL = 'https://victron-dashboard.vercel.app/api/p1?secret=Nummer14!';
+// Geheim komt uit de omgeving: CRON_SECRET=... node scripts/importP1.js
+const API_URL = 'https://victron-dashboard.vercel.app/api/p1?secret=' + encodeURIComponent(process.env.CRON_SECRET || '');
 const START_DATUM = new Date('2025-04-03');
 
 function parseCSV(inhoud) {

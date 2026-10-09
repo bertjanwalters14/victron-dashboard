@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
+import { uitloggen } from './inloggen';
 
 // Gedeelde hoofdnavigatie: één app, drie tabs. Het zijn bewust drie routes (Link = client-side navigatie,
 // voelt als één pagina) zodat Resultaten/Jaaroverzicht hun eigen 6-uurs-cache houden en alleen Live
@@ -62,7 +63,15 @@ export default function TabBar() {
         })}
       </div>
     </nav>
-    <ThemaKnop />
+    <div className="flex items-center gap-2">
+      <ThemaKnop />
+      <form action={uitloggen}>
+        <button type="submit" aria-label="Uitloggen" title="Uitloggen"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-gray-800 bg-gray-900 text-gray-400 transition-colors hover:text-gray-200">
+          <Icoon><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></Icoon>
+        </button>
+      </form>
+    </div>
     </div>
   );
 }

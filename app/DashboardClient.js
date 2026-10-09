@@ -135,7 +135,7 @@ function LiveVandaag({ gisterenWinst }) {
 
   async function fetchLive() {
     try {
-      const res  = await fetch('/api/live?secret=Nummer14!');
+      const res  = await fetch('/api/live');
       const data = await res.json();
       if (data.success) { setWinst(data.winst); setTijd(data.bijgewerkt); }
     } catch {}
@@ -173,7 +173,7 @@ function RefreshButton() {
   async function handleRefresh() {
     setStatus('loading');
     try {
-      const res  = await fetch('/api/sync?secret=Nummer14!');
+      const res  = await fetch('/api/sync');
       const data = await res.json();
       if (data.success) { setStatus('done'); setTimeout(() => window.location.reload(), 1000); }
       else { setStatus('error'); setTimeout(() => setStatus('idle'), 3000); }

@@ -1,4 +1,5 @@
 import { nlVandaagStr, nlDagVensterSec } from '@/lib/tijd';
+import { magApi } from '@/lib/auth';
 
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
@@ -9,8 +10,7 @@ function victronPrijs(spot) {
 }
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  if (searchParams.get('secret') !== process.env.CRON_SECRET) {
+  if (!(await magApi(request))) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

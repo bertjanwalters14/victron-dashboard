@@ -123,7 +123,7 @@ function EnergieStromenChart() {
 
   useEffect(() => {
     let genegeerd = false;
-    fetch(`/api/energiestromen?secret=Nummer14!&datum=${datum}`)
+    fetch(`/api/energiestromen?datum=${datum}`)
       .then(r => r.json())
       .then(j => {
         if (genegeerd) return;

@@ -1,4 +1,5 @@
 import { upsertEnergieData } from '@/lib/db';
+import { magApi } from '@/lib/auth';
 import { nlDagVensterSec } from '@/lib/tijd';
 
 const SITE_ID = process.env.VICTRON_SITE_ID;
@@ -177,7 +178,7 @@ async function syncEénDag(datumStr) {
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  if (searchParams.get('secret') !== process.env.CRON_SECRET) {
+  if (!(await magApi(request))) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
