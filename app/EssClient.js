@@ -88,6 +88,33 @@ function formatDagLabel(datum) {
   return new Date(datum + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+// Dagtotalen onder de grafiek (kWh, som over de getoonde uren), dezelfde indeling als VRM (Naar net, Van net,
+// Verbruik, Totaal zon) plus wat de accu zelf leverde. Gc/Gb staan in `uren` negatief (onder de nullijn
+// getekend), daarom abs(). Bij "vandaag" is het het lopende totaal tot en met het laatste uur met data.
+const kwhTxt = (v) => v.toFixed(1).replace('.', ',') + ' kWh';
+function StroomTotalen({ uren }) {
+  const som = (k) => uren.reduce((t, u) => t + Math.abs(Number(u[k]) || 0), 0);
+  const Bc = som('Bc'), Bg = som('Bg'), Gb = som('Gb'), Gc = som('Gc'), Pb = som('Pb'), Pc = som('Pc'), Pg = som('Pg');
+  const tegels = [
+    { label: 'Van het net', waarde: Gc + Gb, sub: `huis ${kwhTxt(Gc)} · accu ${kwhTxt(Gb)}`, punt: STROOM_KLEUR.Gc },
+    { label: 'Van de accu', waarde: Bc + Bg, sub: `huis ${kwhTxt(Bc)} · net ${kwhTxt(Bg)}`, punt: STROOM_KLEUR.Bc },
+    { label: 'Naar het net', waarde: Pg + Bg, sub: `zon ${kwhTxt(Pg)} · accu ${kwhTxt(Bg)}`, punt: STROOM_KLEUR.Pg },
+    { label: 'Verbruik', waarde: Pc + Bc + Gc, sub: `zon ${kwhTxt(Pc)} · accu ${kwhTxt(Bc)} · net ${kwhTxt(Gc)}`, punt: STROOM_KLEUR.Pc },
+    { label: 'Totaal zon', waarde: Pb + Pc + Pg, sub: `huis ${kwhTxt(Pc)} · accu ${kwhTxt(Pb)} · net ${kwhTxt(Pg)}`, punt: '#facc15' },
+  ];
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      {tegels.map(t => (
+        <div key={t.label} className="rounded-xl bg-gray-800/60 px-3.5 py-3">
+          <div className="flex items-center gap-2 text-xs text-gray-400"><span className="h-2 w-2 rounded-full" style={{ background: t.punt }} />{t.label}</div>
+          <div className="text-xl font-semibold tabular-nums">{kwhTxt(t.waarde)}</div>
+          <div className="text-xs text-gray-400">{t.sub}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EnergieStromenChart() {
   const [datum, setDatum] = useState(vandaagNL());
   const [uren, setUren] = useState(null);
@@ -141,6 +168,7 @@ function EnergieStromenChart() {
         <Bar dataKey="Gb" name="Net → accu" stackId="stroom" fill={STROOM_KLEUR.Gb} />
       </ComposedChart>
     </ResponsiveContainer>
+    <StroomTotalen uren={uren} />
     </>
   );
 }
