@@ -371,29 +371,30 @@ function ReserveEditor({ initial }) {
   );
 }
 
-// Actuele SOC uit VRM (/api/soc-live), elke 30 s zolang de pagina open staat. Valt terug op de SOC uit de
-// 20-minuten-push (status.soc) zolang er nog geen live waarde is of VRM niet antwoordt.
+// Meest recente SOC die VRM heeft (/api/soc-live), elke 30 s opgehaald zolang de pagina open staat. Let op: VRM
+// ontvangt de data van de Cerbo per "logging interval" (standaard 15 min), dus dit is zo vers als dat interval.
+// We tonen daarom ook het meetmoment. Valt terug op de SOC uit de 20-minuten-push (status.soc) zonder waarde.
 function useLiveSoc() {
-  const [soc, setSoc] = useState(null);
+  const [meting, setMeting] = useState(null);
   useEffect(() => {
     let weg = false;
     const laad = async () => {
       try {
         const j = await (await fetch('/api/soc-live')).json();
-        if (!weg && j.success) setSoc(j.soc);
+        if (!weg && j.success) setMeting({ soc: j.soc, tijdstip: j.tijdstip });
       } catch {}
     };
     laad();
     const iv = setInterval(laad, 30000);
     return () => { weg = true; clearInterval(iv); };
   }, []);
-  return soc;
+  return meting;
 }
 
 // Statuskaart: modus, SOC groot, voortgangsbalk met de verkoop-bodem (reserve) als streepje erin.
 function HeroKaart({ s, bijgewerkt, reserveSoc }) {
   const live = useLiveSoc();
-  const socBron = live ?? s.soc;
+  const socBron = live?.soc ?? s.soc;
   const soc = socBron != null ? Math.round(socBron) : null;
   const kwh = soc != null ? (soc / 100) * 32 : null;
   const balkKleur = soc == null ? 'bg-gray-600' : soc < 20 ? 'bg-red-500' : soc < 50 ? 'bg-amber-500' : 'bg-green-500';
@@ -405,7 +406,7 @@ function HeroKaart({ s, bijgewerkt, reserveSoc }) {
         <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ background: mk + '26', color: mk }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: mk }} />{s.mode || '—'}
         </span>
-        <span className="text-xs text-gray-500" title="De SOC is live uit VRM; modus en planning komen uit de status-push van Node-RED (elke 20 min).">{live != null ? "SOC live · modus van " : "bijgewerkt "}{tijd}</span>
+        <span className="text-xs text-gray-500" title="De SOC komt uit VRM (zo vers als het logging interval van de Cerbo); modus en planning komen uit de status-push van Node-RED (elke 20 min).">{live?.tijdstip ? `SOC van ${new Date(live.tijdstip * 1000).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" })} · modus van ${tijd}` : `bijgewerkt ${tijd}`}</span>
       </div>
       <div className="flex items-baseline gap-1.5">
         <span className="text-5xl font-semibold leading-none tabular-nums">{soc ?? '—'}</span>
