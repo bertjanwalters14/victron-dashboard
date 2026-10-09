@@ -371,46 +371,6 @@ function ReserveEditor({ initial }) {
   );
 }
 
-const kw = (w) => (w / 1000).toFixed(1).replace('.', ',');
-
-// Live vermogens (zon, accu, net, huis) van dit moment uit /api/nu (VRM, 30 s gecachet, geen Neon).
-// Ververst elke 30 s zolang de pagina open staat.
-function LiveStroom() {
-  const [nu, setNu] = useState(null);
-  useEffect(() => {
-    let genegeerd = false;
-    async function laad() {
-      try {
-        const j = await (await fetch('/api/nu')).json();
-        if (!genegeerd && j.success) setNu(j);
-      } catch {}
-    }
-    laad();
-    const iv = setInterval(laad, 30000);
-    return () => { genegeerd = true; clearInterval(iv); };
-  }, []);
-
-  const rij = nu ? [
-    { label: 'Zon', punt: 'bg-amber-400', waarde: `${kw(nu.zonW)} kW`, sub: nu.zonW > 50 ? 'opwekking' : 'geen zon', subKleur: 'text-gray-400' },
-    { label: 'Accu', punt: 'bg-blue-500', waarde: `${nu.accuW > 0 ? '+' : ''}${kw(nu.accuW)} kW`,
-      sub: nu.accuW > 100 ? 'laden' : nu.accuW < -100 ? 'ontladen' : 'rust', subKleur: nu.accuW > 100 ? 'text-blue-300' : nu.accuW < -100 ? 'text-green-300' : 'text-gray-400' },
-    { label: 'Net', punt: 'bg-purple-400', waarde: `${nu.netW > 0 ? '+' : ''}${kw(nu.netW)} kW`,
-      sub: nu.netW > 100 ? 'inkoop' : nu.netW < -100 ? 'teruglevering' : 'in balans', subKleur: nu.netW > 100 ? 'text-red-300' : nu.netW < -100 ? 'text-green-300' : 'text-gray-400' },
-    { label: 'Huis', punt: 'bg-gray-400', waarde: `${kw(nu.huisW)} kW`, sub: 'verbruik nu', subKleur: 'text-gray-400' },
-  ] : [];
-  return (
-    <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-      {(nu ? rij : [0, 1, 2, 3].map(i => ({ label: ['Zon', 'Accu', 'Net', 'Huis'][i], punt: 'bg-gray-600', waarde: '—' }))).map(t => (
-        <div key={t.label} className="rounded-xl bg-gray-800/60 px-3.5 py-3">
-          <div className="flex items-center gap-2 text-xs text-gray-400"><span className={`h-2 w-2 rounded-full ${t.punt}`} />{t.label}</div>
-          <div className="text-xl font-semibold tabular-nums">{t.waarde}</div>
-          {t.sub && <div className={`text-xs ${t.subKleur}`}>{t.sub}</div>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // Statuskaart: modus, SOC groot, voortgangsbalk met de verkoop-bodem (reserve) als streepje erin.
 function HeroKaart({ s, bijgewerkt, reserveSoc }) {
   const soc = s.soc != null ? Math.round(s.soc) : null;
@@ -522,8 +482,6 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
             <PakTegel dbg={s.dbg} />
           </div>
         </section>
-
-        <LiveStroom />
 
         <section className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SchakelKaart titel="Laden uit net" aan={aan} onToggle={toggleLaden} bezig={pending} aanKleur="bg-blue-600"
