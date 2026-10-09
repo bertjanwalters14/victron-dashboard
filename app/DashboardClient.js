@@ -111,7 +111,7 @@ function Card({ label, value, color, sub, info }) {
   );
 }
 
-// Haalt alleen de SOC op uit /api/ess-status (client-side, geen secret nodig, read-only) -- zodat
+// Haalt alleen de SOC op uit /api/soc-live (VRM rechtstreeks, geen Neon; client-side, read-only) -- zodat
 // de server-component z'n 6-uur-cache behoudt terwijl de accu-stand toch vers blijft. Eenmalig bij
 // het laden van de pagina (geen interval): dit is een ROI-overzicht, geen live-monitoring -- daarvoor
 // is er de "Live sturing"-link naar /ess.
@@ -119,9 +119,9 @@ function AccuBadge() {
   const [soc, setSoc] = useState(null);
 
   useEffect(() => {
-    fetch('/api/ess-status')
+    fetch('/api/soc-live')
       .then(r => r.json())
-      .then(j => { if (j.success && j.status?.soc != null) setSoc(j.status.soc); })
+      .then(j => { if (j.success && j.soc != null) setSoc(j.soc); })
       .catch(() => {});
   }, []);
 
