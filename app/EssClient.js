@@ -413,7 +413,7 @@ function HeroKaart({ s, bijgewerkt, reserveSoc }) {
         <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ background: mk + '26', color: mk }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: mk }} />{s.mode || '—'}
         </span>
-        <span className="text-xs text-gray-500" title="De SOC is de nieuwste meting van twee bronnen: VRM (logging interval van de Cerbo, standaard 15 min) of de status-push van Node-RED (elke 20 min). Modus en planning komen altijd uit de push.">{socTijdMs ? `SOC van ${new Date(socTijdMs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" })} · modus van ${tijd}` : `bijgewerkt ${tijd}`}</span>
+        <span className="text-xs text-gray-500" title={`Tijdstip van de nieuwste meting (SOC uit VRM of de status-push van Node-RED). Modus en planning komen uit de push van Node-RED (elke 20 min), laatste push: ${tijd}`}>bijgewerkt {socTijdMs ? new Date(socTijdMs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" }) : tijd}</span>
       </div>
       <div className="flex items-baseline gap-1.5">
         <span className="text-5xl font-semibold leading-none tabular-nums">{soc ?? '—'}</span>
