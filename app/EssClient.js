@@ -209,6 +209,7 @@ function koopReden(koopUren, ctx) {
   const rest = koopUren.length - schema;
   const restTxt = ctx.keepManual ? '"Accu altijd vol" staat aan'
     : ctx.balans ? 'om te balanceren'
+    : ctx.dekking ? 'zodat de accu niet leeg raakt'
     : 'goedkoop inkopen voor de dure uren erna';
   const schemaTxt = schema
     ? `${schema > 0 && rest > 0 ? schema + ' ' : ''}door je "Accu altijd vol"-schema ${ctx.keepSchedule.start}–${ctx.keepSchedule.end}`
@@ -468,7 +469,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
   });
   // Een effectief-AAN "Accu altijd vol" terwijl het schema NU niet actief is = handmatig aangezet.
   const keepManual = !!keepCharged && !inSchema(nuUur, keepChargedSchedule);
-  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans });
+  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
 
   function toggleLaden() {
     const next = !aan;
