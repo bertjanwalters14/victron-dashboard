@@ -395,7 +395,13 @@ function useLiveSoc() {
 // Statuskaart: modus, SOC groot, voortgangsbalk met de verkoop-bodem (reserve) als streepje erin.
 function HeroKaart({ s, bijgewerkt, reserveSoc }) {
   const live = useLiveSoc();
-  const socBron = live?.soc ?? s.soc;
+  // Twee SOC-bronnen: de push van Node-RED (elke 20 min, maar de Cerbo-meting van dat moment) en VRM (logt per interval,
+  // standaard 15 min). De NIEUWSTE wint -- anders springt het getal terug naar een oudere VRM-waarde terwijl de accu laadt.
+  const pushMs = bijgewerkt ? new Date(bijgewerkt).getTime() : 0;
+  const vrmMs = live?.tijdstip ? live.tijdstip * 1000 : 0;
+  const gebruikVrm = live && vrmMs > pushMs;
+  const socBron = gebruikVrm ? live.soc : s.soc;
+  const socTijdMs = gebruikVrm ? vrmMs : pushMs;
   const soc = socBron != null ? Math.round(socBron) : null;
   const kwh = soc != null ? (soc / 100) * 32 : null;
   const balkKleur = soc == null ? 'bg-gray-600' : soc < 20 ? 'bg-red-500' : soc < 50 ? 'bg-amber-500' : 'bg-green-500';
@@ -407,7 +413,7 @@ function HeroKaart({ s, bijgewerkt, reserveSoc }) {
         <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ background: mk + '26', color: mk }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: mk }} />{s.mode || '—'}
         </span>
-        <span className="text-xs text-gray-500" title="De SOC komt uit VRM (zo vers als het logging interval van de Cerbo); modus en planning komen uit de status-push van Node-RED (elke 20 min).">{live?.tijdstip ? `SOC van ${new Date(live.tijdstip * 1000).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" })} · modus van ${tijd}` : `bijgewerkt ${tijd}`}</span>
+        <span className="text-xs text-gray-500" title="De SOC is de nieuwste meting van twee bronnen: VRM (logging interval van de Cerbo, standaard 15 min) of de status-push van Node-RED (elke 20 min). Modus en planning komen altijd uit de push.">{socTijdMs ? `SOC van ${new Date(socTijdMs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" })} · modus van ${tijd}` : `bijgewerkt ${tijd}`}</span>
       </div>
       <div className="flex items-baseline gap-1.5">
         <span className="text-5xl font-semibold leading-none tabular-nums">{soc ?? '—'}</span>
