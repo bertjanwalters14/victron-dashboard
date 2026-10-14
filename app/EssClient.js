@@ -174,6 +174,19 @@ function EnergieStromenChart() {
   );
 }
 
+// Een "verkopen"-uur waarin de accu niet leegloopt (de SOC zakt niet) en er zon is, is direct terugleveren van het
+// zon-overschot (de energie gaat niet via de accu, dus geen omzettingsverlies) en geen verkoop uit de accu. Dat tonen we
+// als "PV → net" (paars); alleen echte ontlading uit de accu blijft "verkopen" (groen). Werkt ook voor de gepasseerde
+// uren van vandaag (dag-log), want die bevatten dezelfde velden. Afgeleid uit de SOC van het volgende uur.
+function pvDirectAlsPvNet(rijen) {
+  return rijen.map((r, i) => {
+    if (r.cat !== 'verkopen') return r;
+    const volgende = rijen[i + 1];
+    if (!volgende || !(Number(r.pv) > 0.3)) return r;
+    return (volgende.soc - r.soc >= -1) ? { ...r, cat: 'pvnet' } : r;
+  });
+}
+
 const KLEUR = { kopen: '#3b82f6', verkopen: '#22c55e', normaal: '#f59e0b', gratis: '#06b6d4', pvnet: '#c084fc' };
 
 function modeColor(m) {
@@ -184,7 +197,7 @@ function modeColor(m) {
   return '#64748b';
 }
 
-const CAT_LABEL = { kopen: 'Kopen', verkopen: 'Verkopen', normaal: 'Zelfverbruik', gratis: 'Gratis laden (negatief)', pvnet: 'PV → net (accu vol)' };
+const CAT_LABEL = { kopen: 'Kopen', verkopen: 'Verkopen', normaal: 'Zelfverbruik', gratis: 'Gratis laden (negatief)', pvnet: 'PV → net (direct terugleveren)' };
 
 // Vat de geselecteerde periode samen in gewone taal (temperatuur + zon + wat de sturing daarmee doet),
 // puur afgeleid van de forecast-data zelf -- geen apart backend-veld nodig, werkt dus hetzelfde voor
@@ -450,7 +463,7 @@ function SchakelKaart({ titel, sub, subKleur, aan, onToggle, bezig, aanKleur, ch
 const schemaTxt = (sch) => (sch && sch.enabled ? `Schema ${sch.start}–${sch.end} staat aan` : null);
 
 export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze, laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
-  const alle = (forecast || []).map(d => ({ ...d }));
+  const alle = pvDirectAlsPvNet((forecast || []).map(d => ({ ...d })));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
   const [aan, setAan] = useState(!!laadVanNet);
