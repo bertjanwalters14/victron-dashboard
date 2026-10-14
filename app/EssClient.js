@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect, useTransition } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
-import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
+import { useRouter } from 'next/navigation';
+import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc, vraagPush } from './actions';
 import TabBar from './TabBar';
 
 // Energiestromen-kleuren, losjes naar VRM's eigen palet (cyaan=accu->net, oranje=PV->net, groen=PV->accu,
@@ -372,6 +373,37 @@ function ReserveEditor({ initial }) {
   );
 }
 
+// "Ververs nu": vraagt Node-RED (via een token in /api/laadvannet, dat Node-RED elke minuut leest) om meteen de status te
+// pushen, wacht tot de nieuwe status binnen is en ververst dan de pagina. Node-RED kan niet door de app worden aangeroepen
+// (het staat achter de thuisrouter), vandaar het token. Duurt normaal binnen ~1 minuut.
+function VerversKnop({ bijgewerkt }) {
+  const router = useRouter();
+  const [fase, setFase] = useState("rust");   // rust | wacht | klaar | traag
+  async function klik() {
+    if (fase === "wacht") return;
+    setFase("wacht");
+    const t0 = Date.now();
+    try { await vraagPush(); } catch { setFase("rust"); return; }
+    const basis = Math.max(t0, bijgewerkt ? new Date(bijgewerkt).getTime() : 0);
+    for (let i = 0; i < 15; i++) {   // 15 x 8 s = 2 minuten wachten
+      await new Promise(r => setTimeout(r, 8000));
+      try {
+        const j = await (await fetch("/api/ess-status")).json();
+        if (j.bijgewerkt && new Date(j.bijgewerkt).getTime() > basis) { router.refresh(); setFase("klaar"); setTimeout(() => setFase("rust"), 4000); return; }
+      } catch {}
+    }
+    setFase("traag");
+  }
+  const tekst = fase === "wacht" ? "Wacht op Node-RED…" : fase === "klaar" ? "Bijgewerkt ✓" : fase === "traag" ? "Nog niet binnen, probeer later" : "Ververs nu";
+  return (
+    <button type="button" onClick={klik} disabled={fase === "wacht"}
+      title="Vraagt Node-RED om nu de status te sturen (duurt ongeveer een minuut)"
+      className="rounded-full border border-gray-700 px-2.5 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-200 disabled:opacity-60">
+      ↻ {tekst}
+    </button>
+  );
+}
+
 // Meest recente SOC die VRM heeft (/api/soc-live), elke 30 s opgehaald zolang de pagina open staat. Let op: VRM
 // ontvangt de data van de Cerbo per "logging interval" (standaard 15 min), dus dit is zo vers als dat interval.
 // We tonen daarom ook het meetmoment. Valt terug op de SOC uit de 20-minuten-push (status.soc) zonder waarde.
@@ -413,7 +445,8 @@ function HeroKaart({ s, bijgewerkt, reserveSoc }) {
         <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ background: mk + '26', color: mk }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: mk }} />{s.mode || '—'}
         </span>
-        <span className="text-xs text-gray-500" title={`Tijdstip van de nieuwste meting (SOC uit VRM of de status-push van Node-RED). Modus en planning komen uit de push van Node-RED (elke 20 min), laatste push: ${tijd}`}>bijgewerkt {socTijdMs ? new Date(socTijdMs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" }) : tijd}</span>
+        <span className="flex items-center gap-2"><VerversKnop bijgewerkt={bijgewerkt} />
+        <span className="text-xs text-gray-500" title={`Tijdstip van de nieuwste meting (SOC uit VRM of de status-push van Node-RED). Modus en planning komen uit de push van Node-RED (elke 20 min), laatste push: ${tijd}`}>bijgewerkt {socTijdMs ? new Date(socTijdMs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" }) : tijd}</span></span>
       </div>
       <div className="flex items-baseline gap-1.5">
         <span className="text-5xl font-semibold leading-none tabular-nums">{soc ?? '—'}</span>

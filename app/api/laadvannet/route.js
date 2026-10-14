@@ -1,5 +1,7 @@
 import { neon } from '@neondatabase/serverless';
+import { revalidateTag } from 'next/cache';
 import { parseSchedule, effectiveState } from '@/lib/schedule';
+import { leesKnoppenRuw, KNOPPEN_TAG } from '@/lib/knoppen';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,13 +16,8 @@ function getDb() {
 // verwerkt tot een simpele aan/uit-waarde. Geen secret: read-only, lage gevoeligheid.
 export async function GET() {
   try {
-    const sql = getDb();
-    const rows = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN (
-      'laad_van_net', 'keep_charged', 'verkoop_pauze', 'reserve_soc',
-      'laad_van_net_schedule', 'keep_charged_schedule', 'verkoop_pauze_schedule'
-    )`;
-    const m = {};
-    rows.forEach(r => { m[r.sleutel] = r.waarde; });
+    // v. 14-10: uit de cache (tag 'knoppen'), niet elke minuut uit Neon -- zie lib/knoppen.js
+    const m = await leesKnoppenRuw();
     const laadVanNetSchedule = parseSchedule(m['laad_van_net_schedule']);
     const keepChargedSchedule = parseSchedule(m['keep_charged_schedule']);
     const verkoopPauzeSchedule = parseSchedule(m['verkoop_pauze_schedule']);
@@ -36,6 +33,7 @@ export async function GET() {
       verkoopPauzeHandmatig: m['verkoop_pauze'] === 'true',
       laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule,
       reserveSoc,
+      pushToken: Number(m['push_nu']) || 0,   // wijzigt zodra iemand in de app "Ververs nu" indrukt -> Node-RED pusht dan meteen de status
     });
   } catch {
     const off = { enabled: false, start: '12:00', end: '18:00' };
@@ -43,7 +41,7 @@ export async function GET() {
       success: true, laadVanNet: false, keepCharged: false, verkoopPauze: false,
       laadVanNetHandmatig: false, keepChargedHandmatig: false, verkoopPauzeHandmatig: false,
       laadVanNetSchedule: off, keepChargedSchedule: off, verkoopPauzeSchedule: off,
-      reserveSoc: 25,
+      reserveSoc: 25, pushToken: 0,
     });
   }
 }
@@ -65,6 +63,7 @@ export async function POST(request) {
       ON CONFLICT (sleutel) DO UPDATE SET
         waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
     `;
+    revalidateTag(KNOPPEN_TAG, 'max');   // in een route handler kan updateTag niet; de volgende poll (of de daaropvolgende) ziet de nieuwe stand
     return Response.json({ success: true, laadVanNet: aan });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });

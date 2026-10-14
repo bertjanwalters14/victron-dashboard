@@ -1,7 +1,7 @@
 'use server';
 
 import { neon } from '@neondatabase/serverless';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { cookies } from 'next/headers';
 import { sessieTokenOk, SESSIE_COOKIE } from '@/lib/auth';
 
@@ -22,6 +22,7 @@ export async function setLaadVanNet(aan) {
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
   revalidatePath('/ess');
+  updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return aan;
 }
 
@@ -36,6 +37,7 @@ export async function setKeepCharged(aan) {
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
   revalidatePath('/ess');
+  updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return aan;
 }
 
@@ -50,6 +52,7 @@ export async function setVerkoopPauze(aan) {
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
   revalidatePath('/ess');
+  updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return aan;
 }
 
@@ -67,6 +70,7 @@ export async function setReserveSoc(pct) {
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
   revalidatePath('/ess');
+  updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return v;
 }
 
@@ -86,5 +90,22 @@ export async function setSchedule(key, { enabled, start, end }) {
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
   revalidatePath('/ess');
+  updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return { enabled: !!enabled, start: start || '12:00', end: end || '18:00' };
+}
+
+// Server action: vraag Node-RED om nu de status naar Vercel te pushen (de 'Ververs nu'-knop). Het token wijzigt;
+// Node-RED haalt /api/laadvannet elke minuut op, ziet het nieuwe token en pusht dan meteen (zie victron_ess_laadknop.json).
+export async function vraagPush() {
+  await vereisInlog();
+  const token = String(Date.now());
+  const sql = neon(process.env.DATABASE_URL);
+  await sql`
+    INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
+    VALUES ('push_nu', ${token}, NOW())
+    ON CONFLICT (sleutel) DO UPDATE SET
+      waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
+  `;
+  updateTag('knoppen');
+  return Number(token);
 }
