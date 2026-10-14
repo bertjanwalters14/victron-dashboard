@@ -392,40 +392,10 @@ function ReserveEditor({ initial }) {
   );
 }
 
-// Meest recente SOC die VRM heeft (/api/soc-live), elke 30 s opgehaald zolang de pagina open staat. Let op: VRM
-// ontvangt de data van de Cerbo per "logging interval" (standaard 15 min), dus dit is zo vers als dat interval.
-// We tonen daarom ook het meetmoment. Valt terug op de SOC uit de 20-minuten-push (status.soc) zonder waarde.
-function useLiveSoc() {
-  const [meting, setMeting] = useState(null);
-  useEffect(() => {
-    let weg = false;
-    const laad = async () => {
-      try {
-        const j = await (await fetch('/api/soc-live')).json();
-        if (!weg && j.success) setMeting({ soc: j.soc, tijdstip: j.tijdstip });
-      } catch {}
-    };
-    laad();
-    const iv = setInterval(laad, 30000);
-    return () => { weg = true; clearInterval(iv); };
-  }, []);
-  return meting;
-}
-
 // Statuskaart: modus, SOC groot, voortgangsbalk met de verkoop-bodem (reserve) als streepje erin.
 function HeroKaart({ s, bijgewerkt, reserveSoc }) {
-  const live = useLiveSoc();
-  // Twee SOC-bronnen: de push van Node-RED (elke 20 min, maar de Cerbo-meting van dat moment) en VRM (logt per interval,
-  // standaard 15 min). De NIEUWSTE wint -- anders springt het getal terug naar een oudere VRM-waarde terwijl de accu laadt.
-  const pushMs = bijgewerkt ? new Date(bijgewerkt).getTime() : 0;
-  const vrmMs = live?.tijdstip ? live.tijdstip * 1000 : 0;
-  const gebruikVrm = live && vrmMs > pushMs;
-  const socBron = gebruikVrm ? live.soc : s.soc;
-  const socTijdMs = gebruikVrm ? vrmMs : pushMs;
-  // Modus en planning komen uit de push (kan tot 20 min oud zijn), de SOC kan nieuwer zijn: dan zet ik de tijd van de modus erbij,
-  // anders lijkt het alsof alles van het getoonde (nieuwere) tijdstip is.
-  const modusAchter = pushMs > 0 && socTijdMs - pushMs > 120000;
-  const soc = socBron != null ? Math.round(socBron) : null;
+  // Alles op deze kaart (SOC, modus, planning) komt uit dezelfde push van Node-RED en heeft dus één tijdstip.
+  const soc = s.soc != null ? Math.round(s.soc) : null;
   const kwh = soc != null ? (soc / 100) * 32 : null;
   const balkKleur = soc == null ? 'bg-gray-600' : soc < 20 ? 'bg-red-500' : soc < 50 ? 'bg-amber-500' : 'bg-green-500';
   const mk = modeColor(s.mode);
@@ -435,9 +405,8 @@ function HeroKaart({ s, bijgewerkt, reserveSoc }) {
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ background: mk + '26', color: mk }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: mk }} />{s.mode || '—'}
-          {modusAchter && <span className="ml-1 text-xs opacity-70">· van {tijd}</span>}
         </span>
-        <span className="text-xs text-gray-500" title={`Tijdstip van de nieuwste meting (SOC uit VRM of de status-push van Node-RED). Modus en planning komen uit de push van Node-RED (elke 20 min), laatste push: ${tijd}`}>bijgewerkt {socTijdMs ? new Date(socTijdMs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" }) : tijd}</span>
+        <span className="text-xs text-gray-500" title="Tijdstip van de laatste status van Node-RED (elke 20 min, en direct na een wijziging aan een knop)">bijgewerkt {tijd}</span>
       </div>
       <div className="flex items-baseline gap-1.5">
         <span className="text-5xl font-semibold leading-none tabular-nums">{soc ?? '—'}</span>
