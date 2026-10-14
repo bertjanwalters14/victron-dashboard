@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useCallback } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { useRouter } from 'next/navigation';
 import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc, vraagPush } from './actions';
@@ -301,6 +301,23 @@ function Dropdown({ trigger, open, onToggle, children }) {
   );
 }
 
+// Na een wijziging (knop, schema, slider) vraagt de server action zelf om een push (zie actions.js); deze hook wacht
+// dan op de nieuwe status van Node-RED (uiterlijk 2 minuten) en ververst daarna de pagina, zodat modus en planning
+// vanzelf meebewegen. Niet awaiten binnen een transition (anders blijft "opslaan…" 2 minuten staan).
+function useVolgNieuweStatus() {
+  const router = useRouter();
+  return useCallback(async () => {
+    const t0 = Date.now();
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 8000));
+      try {
+        const j = await (await fetch('/api/ess-status')).json();
+        if (j.bijgewerkt && new Date(j.bijgewerkt).getTime() > t0) { router.refresh(); return; }
+      } catch {}
+    }
+  }, [router]);
+}
+
 // Tijdschema-dropdown onder een knop: zet de knop automatisch AAN binnen [start, end); buiten dat
 // venster geldt gewoon de handmatige stand van de knop erboven. De trigger toont het venster zelf
 // (bv. "12:00–18:00") als het schema aan staat, dus je ziet dat al zonder open te klikken.
@@ -308,11 +325,12 @@ function ScheduleEditor({ scheduleKey, initial }) {
   const [cfg, setCfg] = useState(initial);
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const volg = useVolgNieuweStatus();
 
   function update(patch) {
     const next = { ...cfg, ...patch };
     setCfg(next);
-    startTransition(() => setSchedule(scheduleKey, next));
+    startTransition(async () => { await setSchedule(scheduleKey, next); volg(); });
   }
 
   return (
@@ -351,7 +369,8 @@ function ReserveEditor({ initial }) {
   const [pct, setPct] = useState(initial);
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const commit = (v) => startTransition(() => setReserveSoc(v));
+  const volg = useVolgNieuweStatus();
+  const commit = (v) => startTransition(async () => { await setReserveSoc(v); volg(); });
 
   return (
     <Dropdown open={open} onToggle={() => setOpen(o => !o)} trigger={<>🔋 {pct}%</>}>
@@ -498,6 +517,7 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
   const [pauze, setPauze] = useState(!!verkoopPauze);
   const [dag, setDag] = useState('vandaag');   // 'vandaag' | 'morgen' | 'alles'
   const [pending, startTransition] = useTransition();
+  const volg = useVolgNieuweStatus();
 
   const heeftMorgen = alle.some(d => String(d.uur).startsWith('+1'));
   const data = alle.filter(d => {
@@ -513,19 +533,19 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
   function toggleLaden() {
     const next = !aan;
     setAan(next);
-    startTransition(() => setLaadVanNet(next));
+    startTransition(async () => { await setLaadVanNet(next); volg(); });
   }
 
   function toggleVol() {
     const next = !vol;
     setVol(next);
-    startTransition(() => setKeepCharged(next));
+    startTransition(async () => { await setKeepCharged(next); volg(); });
   }
 
   function togglePauze() {
     const next = !pauze;
     setPauze(next);
-    startTransition(() => setVerkoopPauze(next));
+    startTransition(async () => { await setVerkoopPauze(next); volg(); });
   }
 
   const prijsNu = s.buy != null ? `€${Number(s.buy).toFixed(3).replace('.', ',')}` : '—';

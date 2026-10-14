@@ -11,6 +11,18 @@ async function vereisInlog() {
   if (!(await sessieTokenOk(token))) throw new Error('Niet ingelogd');
 }
 
+// Elke wijziging aan een knop, schema of de slider vraagt ook meteen om een verse status: dit zet het push-token
+// (zie vraagPush hieronder) zodat Node-RED binnen ~een minuut pusht en het dashboard vanzelf bijwerkt, zonder dat
+// je op "Ververs nu" hoeft te klikken. Bij de elk-minuut-poll van Node-RED (zie lib/knoppen.js) is dat goedkoop.
+async function markeerPush(sql) {
+  await sql`
+    INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
+    VALUES ('push_nu', ${String(Date.now())}, NOW())
+    ON CONFLICT (sleutel) DO UPDATE SET
+      waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
+  `;
+}
+
 // Server action: zet "laden uit net" aan/uit. Draait server-side (geen secret in de client nodig).
 export async function setLaadVanNet(aan) {
   await vereisInlog();
@@ -21,6 +33,7 @@ export async function setLaadVanNet(aan) {
     ON CONFLICT (sleutel) DO UPDATE SET
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
+  await markeerPush(sql);
   revalidatePath('/ess');
   updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return aan;
@@ -36,6 +49,7 @@ export async function setKeepCharged(aan) {
     ON CONFLICT (sleutel) DO UPDATE SET
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
+  await markeerPush(sql);
   revalidatePath('/ess');
   updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return aan;
@@ -51,6 +65,7 @@ export async function setVerkoopPauze(aan) {
     ON CONFLICT (sleutel) DO UPDATE SET
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
+  await markeerPush(sql);
   revalidatePath('/ess');
   updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return aan;
@@ -69,6 +84,7 @@ export async function setReserveSoc(pct) {
     ON CONFLICT (sleutel) DO UPDATE SET
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
+  await markeerPush(sql);
   revalidatePath('/ess');
   updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return v;
@@ -89,6 +105,7 @@ export async function setSchedule(key, { enabled, start, end }) {
     ON CONFLICT (sleutel) DO UPDATE SET
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
+  await markeerPush(sql);
   revalidatePath('/ess');
   updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return { enabled: !!enabled, start: start || '12:00', end: end || '18:00' };
