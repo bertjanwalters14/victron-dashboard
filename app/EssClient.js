@@ -422,6 +422,9 @@ function HeroKaart({ s, bijgewerkt, reserveSoc }) {
   const gebruikVrm = live && vrmMs > pushMs;
   const socBron = gebruikVrm ? live.soc : s.soc;
   const socTijdMs = gebruikVrm ? vrmMs : pushMs;
+  // Modus en planning komen uit de push (kan tot 20 min oud zijn), de SOC kan nieuwer zijn: dan zet ik de tijd van de modus erbij,
+  // anders lijkt het alsof alles van het getoonde (nieuwere) tijdstip is.
+  const modusAchter = pushMs > 0 && socTijdMs - pushMs > 120000;
   const soc = socBron != null ? Math.round(socBron) : null;
   const kwh = soc != null ? (soc / 100) * 32 : null;
   const balkKleur = soc == null ? 'bg-gray-600' : soc < 20 ? 'bg-red-500' : soc < 50 ? 'bg-amber-500' : 'bg-green-500';
@@ -432,6 +435,7 @@ function HeroKaart({ s, bijgewerkt, reserveSoc }) {
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ background: mk + '26', color: mk }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: mk }} />{s.mode || '—'}
+          {modusAchter && <span className="ml-1 text-xs opacity-70">· van {tijd}</span>}
         </span>
         <span className="text-xs text-gray-500" title={`Tijdstip van de nieuwste meting (SOC uit VRM of de status-push van Node-RED). Modus en planning komen uit de push van Node-RED (elke 20 min), laatste push: ${tijd}`}>bijgewerkt {socTijdMs ? new Date(socTijdMs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" }) : tijd}</span>
       </div>
