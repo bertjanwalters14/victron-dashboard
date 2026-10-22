@@ -55,9 +55,11 @@ export default function TabBar() {
         {TABS.map(t => {
           const actief = t.href === '/' ? pad === '/' : pad === t.href || pad.startsWith(t.href + '/');
           return (
-            <Link key={t.href} href={t.href} aria-current={actief ? 'page' : undefined}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${actief ? 'bg-gray-800 text-gray-50' : 'text-gray-400 hover:text-gray-200'}`}>
-              {t.icoon}{t.label}
+            // Op mobiel alleen het icoon (de tekst past daar niet naast de thema- en uitlogknop); vanaf `sm` icoon + tekst.
+            // aria-label/title houden de naam beschikbaar voor schermlezers en bij lang indrukken.
+            <Link key={t.href} href={t.href} aria-current={actief ? 'page' : undefined} aria-label={t.label} title={t.label}
+              className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium transition-colors sm:px-3.5 sm:py-2 ${actief ? 'bg-gray-800 text-gray-50' : 'text-gray-400 hover:text-gray-200'}`}>
+              {t.icoon}<span className="hidden sm:inline">{t.label}</span>
             </Link>
           );
         })}
