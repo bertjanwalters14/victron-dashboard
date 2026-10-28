@@ -24,19 +24,21 @@ export async function GET(request) {
     const start = venster.start;
     const end   = Math.floor(nu.getTime() / 1000);
 
-    // Victron uurdata van vandaag
-    const victronRes = await fetch(
-      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
-      { headers: { 'x-authorization': `Token ${TOKEN}` } }
-    );
-    const victronData = await victronRes.json();
+    // VRM-uurdata en EnergyZero-prijzen van vandaag tegelijk ophalen (voorheen na elkaar: de twee wachttijden
+    // telden op). De prijzen van een dag veranderen niet meer, dus die mogen een uur uit de cache komen.
+    const [victronRes, prijsRes] = await Promise.all([
+      fetch(
+        `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
+        { headers: { 'x-authorization': `Token ${TOKEN}` } }
+      ),
+      fetch(
+        `https://api.energyzero.nl/v1/energyprices?fromDate=${new Date(venster.start * 1000).toISOString()}&tillDate=${new Date(venster.eind * 1000).toISOString()}&interval=4&usageType=1&inclBtw=false`,
+        { next: { revalidate: 3600 } }
+      ),
+    ]);
+    const [victronData, prijsData] = await Promise.all([victronRes.json(), prijsRes.json()]);
     const records = victronData?.records || {};
 
-    // Energieprijzen van vandaag
-    const prijsRes = await fetch(
-      `https://api.energyzero.nl/v1/energyprices?fromDate=${new Date(venster.start * 1000).toISOString()}&tillDate=${new Date(venster.eind * 1000).toISOString()}&interval=4&usageType=1&inclBtw=false`
-    );
-    const prijsData = await prijsRes.json();
     const prijzen   = prijsData?.Prices || [];
 
     const prijsPerUur = {};

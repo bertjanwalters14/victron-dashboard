@@ -135,12 +135,21 @@ function LiveVandaag({ gisterenWinst }) {
     try {
       const res  = await fetch('/api/live');
       const data = await res.json();
-      if (data.success) { setWinst(data.winst); setTijd(data.bijgewerkt); }
+      if (data.success) {
+        setWinst(data.winst); setTijd(data.bijgewerkt);
+        try { localStorage.setItem('live_vandaag', JSON.stringify({ datum: data.datum, winst: data.winst, tijd: data.bijgewerkt })); } catch {}
+      }
     } catch {}
     setLoading(false);
   }
 
   useEffect(() => {
+    // Laatste bekende waarde van vandaag meteen tonen; de verse waarde komt er direct na.
+    try {
+      const opgeslagen = JSON.parse(localStorage.getItem('live_vandaag') || 'null');
+      const vandaag = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
+      if (opgeslagen && opgeslagen.datum === vandaag) { setWinst(opgeslagen.winst); setTijd(opgeslagen.tijd); setLoading(false); }
+    } catch {}
     fetchLive();
     const iv = setInterval(fetchLive, 60 * 60 * 1000);
     return () => clearInterval(iv);
