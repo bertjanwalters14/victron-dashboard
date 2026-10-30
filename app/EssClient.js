@@ -482,7 +482,10 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
   });
   // Een effectief-AAN "Accu altijd vol" terwijl het schema NU niet actief is = handmatig aangezet.
   const keepManual = !!keepCharged && !inSchema(nuUur, keepChargedSchedule);
-  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
+  // v2.2: bij een te kleine dagspread is er geen balansdag, ook al is er een onbalans gemeten (dan is een koopuur geen "om te balanceren")
+  const geenBalansdag = !!s.balansDoel && s.balansDoel.includes('geen balansdag');
+  const spreadTxt = s.dbg?.dagSpreadKoop != null ? `€${Number(s.dbg.dagSpreadKoop).toFixed(2).replace('.', ',')}` : null;
+  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans && !geenBalansdag, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
 
   function toggleLaden() {
     const next = !aan;
@@ -542,11 +545,15 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
           </div>
         </section>
 
-        {s.balansDoel ? (
+        {s.balansDoel ? (geenBalansdag ? (
+          <div className="mb-3 flex items-center gap-2 rounded-2xl border border-gray-700 bg-gray-800/40 p-3 text-sm text-gray-300">
+            Onbalans gemeten, maar vandaag geen balansdag: de prijzen liggen te vlak{spreadTxt ? <> (dagspread <b>{spreadTxt}</b>, minimaal €0,15 nodig)</> : null}
+          </div>
+        ) : (
           <div className="mb-3 flex items-center gap-2 rounded-2xl border border-amber-800/60 bg-amber-900/30 p-3 text-sm text-amber-200">
             Balancering nodig ({s.balansDagen} dagen geen 100%), gepland op de zonnigste dag: <b>{s.balansDoel}</b>
           </div>
-        ) : null}
+        )) : null}
 
         <section className={`${KAART} mb-3 p-4 md:p-5`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
