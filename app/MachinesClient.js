@@ -139,11 +139,14 @@ export default function MachinesClient({ forecast, bijgewerkt }) {
             <h1 className="text-2xl font-bold">Machines aanzetten</h1>
             <p className="text-sm text-gray-400">Het goedkoopste moment voor wasmachine, droger en vaatwasser.</p>
           </div>
-          <div className="inline-flex gap-1 rounded-xl border border-gray-800 bg-gray-900 p-1" role="group" aria-label="Duur van de machine">
-            {[2, 3].map(n => (
-              <button key={n} type="button" onClick={() => setUren(n)} aria-pressed={uren === n}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${uren === n ? 'bg-gray-800 text-gray-50' : 'text-gray-400 hover:text-gray-200'}`}>{n} uur</button>
-            ))}
+          <div>
+            <div className="mb-1 text-xs text-gray-400">Duur van het programma</div>
+            <div className="inline-flex gap-1 rounded-xl border border-gray-800 bg-gray-900 p-1" role="group" aria-label="Duur van het programma">
+              {[2, 3].map(n => (
+                <button key={n} type="button" onClick={() => setUren(n)} aria-pressed={uren === n}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${uren === n ? 'bg-gray-800 text-gray-50' : 'text-gray-400 hover:text-gray-200'}`}>{n} uur</button>
+              ))}
+            </div>
           </div>
         </div>
 
