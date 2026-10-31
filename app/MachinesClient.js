@@ -40,7 +40,7 @@ function Balkjes({ advies }) {
           const kleur = r.prijs <= laag ? 'bg-green-400' : r.prijs >= hoog ? 'bg-amber-300' : 'bg-gray-600';
           const inBeste = r.i >= b.start && r.i < b.eind;
           return (
-            <div key={r.i} title={`${dagNaam(Math.floor(r.i / 24) - advies.dagNu)} ${uurTekst(r.i)}: ${euro(r.prijs)}`}
+            <div key={r.i} title={`${dagNaam(Math.floor(r.i / 24) - advies.dagNu)} ${uurTekst(r.i)}: ${euro(r.net)} netprijs${r.net - r.prijs > 0.005 ? `, ${euro(r.prijs)} met zon` : ''}`}
               style={{ height: hoogte + 'px' }}
               className={`min-w-0 flex-1 rounded-sm ${kleur} ${inBeste ? 'opacity-100 ring-2 ring-gray-50' : 'opacity-50'}`} />
           );
@@ -91,7 +91,7 @@ export default function MachinesClient({ forecast, bijgewerkt }) {
             <span className={`h-3 w-3 shrink-0 rounded-full ${stand.punt}`} />
             <div>
               <div className={`text-sm font-medium ${stand.tekst}`}>Nu: {stand.zin}</div>
-              {advies.huidigePrijs != null ? <div className="text-xs text-gray-400">Dit uur kost {euro(advies.huidigePrijs)} per kWh</div> : null}
+              {advies.huidigNet != null ? <div className="text-xs text-gray-400">Dit uur kost {euro(advies.huidigNet)} per kWh{advies.huidigNet - advies.huidigePrijs > 0.005 ? ` (${euro(advies.huidigePrijs)} met zon)` : ''}</div> : null}
             </div>
           </div>
         ) : null}
@@ -101,6 +101,7 @@ export default function MachinesClient({ forecast, bijgewerkt }) {
           <div className="mt-0.5 text-2xl font-bold md:text-3xl">{dagNaam(Math.floor(b.start / 24) - advies.dagNu)} {uurTekst(b.start)} tot {uurTekst(b.eind)}</div>
           <div className="mt-1 text-sm text-gray-400">
             gemiddeld {euro(b.prijs)} per kWh · {b.zon >= 2 ? 'met zon erbij' : 'zon is er nauwelijks'}
+            {b.net - b.prijs > 0.005 ? <span className="block text-xs text-gray-500">netprijs {euro(b.net)}, de zon scheelt {euro(b.net - b.prijs)} per kWh</span> : null}
           </div>
 
           <div className="mt-4 mb-4"><Balkjes advies={advies} /></div>
@@ -155,7 +156,7 @@ export default function MachinesClient({ forecast, bijgewerkt }) {
         ) : null}
 
         <p className="mt-3 text-xs text-gray-500">
-          Gebaseerd op de uurprijzen en de zonverwachting{tijdVan(bijgewerkt) ? ` (bijgewerkt om ${tijdVan(bijgewerkt)})` : ''}. Met zon draaien de machines deels op eigen stroom. Het advies verandert niets aan de sturing van de accu.
+          Gebaseerd op de uurprijzen en de zonverwachting{tijdVan(bijgewerkt) ? ` (bijgewerkt om ${tijdVan(bijgewerkt)})` : ''}. Zonnestroom die je zelf gebruikt telt zwaarder mee, uitgaand van de lagere terugleververgoeding na het einde van de saldering (1 januari 2027). Het advies verandert niets aan de sturing van de accu.
         </p>
       </div>
     </main>
