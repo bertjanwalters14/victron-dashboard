@@ -74,7 +74,7 @@ export default function MachinesClient({ forecast, bijgewerkt }) {
         <div className="text-base font-medium">Nog geen goed moment om te tonen</div>
         <p className="mt-1 text-sm text-gray-400">
           {forecast && forecast.length
-            ? 'Voor de rest van vandaag zijn er niet genoeg uren meer. De prijzen van morgen komen meestal rond 14:00 binnen.'
+            ? 'Voor de rest van vandaag zijn er niet genoeg uren meer. De prijzen van morgen komen meestal rond 15:00 binnen.'
             : 'Er zijn nog geen prijzen binnengekomen. Probeer het over een paar minuten opnieuw.'}
         </p>
       </div>

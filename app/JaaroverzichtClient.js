@@ -73,6 +73,12 @@ function contractCyclus(jaar, maandIdx) {
   return Math.floor(maandenSindsAnker / 12);
 }
 
+// Een nieuwe cyclus begint op 9 november, niet op de 1e van de maand: 1 t/m 8 november horen nog bij het vorige contractjaar.
+function cyclusVanDag(jaar, maandIdx, dag) {
+  const nieuwJaarGestart = maandIdx > ANKER_MAAND || (maandIdx === ANKER_MAAND && dag >= 9);
+  return nieuwJaarGestart ? jaar - ANKER_JAAR : jaar - ANKER_JAAR - 1;
+}
+
 function cyclusLabel(cyclusIdx) {
   const startJaar = ANKER_JAAR + cyclusIdx;
   const eindJaar = startJaar + 1;
@@ -87,10 +93,15 @@ function berekenMaanden(data) {
   for (const r of data) {
     if (r.netto_kosten == null) continue; // dagen van vóór deze tracking bestond
     const d = new Date(r.datum + 'T12:00:00');
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    // November wordt gesplitst op de 9e (contractjaar-wissel); alle andere maanden zijn één rij.
+    const splits = d.getMonth() === ANKER_MAAND;
+    const voorDeNegende = d.getDate() < 9;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}${splits ? (voorDeNegende ? '-a' : '-b') : ''}`;
     if (!perMaand.has(key)) {
       perMaand.set(key, {
         key, jaar: d.getFullYear(), maandIdx: d.getMonth(),
+        cyclus: cyclusVanDag(d.getFullYear(), d.getMonth(), d.getDate()),
+        deel: splits ? (voorDeNegende ? '1 t/m 8 nov' : 'vanaf 9 nov') : null,
         nettoKosten: 0, voorschot: 0, dagen: 0,
       });
     }
@@ -108,7 +119,7 @@ function berekenMaanden(data) {
 function berekenCycli(maanden) {
   const perCyclus = new Map();
   for (const m of maanden) {
-    const idx = contractCyclus(m.jaar, m.maandIdx);
+    const idx = m.cyclus ?? contractCyclus(m.jaar, m.maandIdx);
     if (!perCyclus.has(idx)) perCyclus.set(idx, { idx, label: cyclusLabel(idx), maanden: [] });
     perCyclus.get(idx).maanden.push(m);
   }
@@ -187,6 +198,7 @@ function CyclusSectie({ cyclus, isHuidig }) {
                 <tr key={r.key} className="border-b border-gray-700/50 last:border-0">
                   <td className="p-2 sm:p-3 capitalize">
                     {maandNaam(r.jaar, r.maandIdx)}
+                    {r.deel && <span className="text-gray-500 text-[10px] sm:text-xs ml-1 sm:ml-2 whitespace-nowrap normal-case">({r.deel})</span>}
                     {r.bron === 'anwb' && <span className="text-gray-600 text-[10px] sm:text-xs ml-1 sm:ml-2 whitespace-nowrap" title="Overgenomen uit de ANWB-app, geen VRM-data beschikbaar">(ANWB)</span>}
                   </td>
                   <td className="p-2 sm:p-3 text-right text-gray-300 whitespace-nowrap">€{r.nettoKosten.toFixed(2)}</td>
