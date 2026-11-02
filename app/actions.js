@@ -4,6 +4,7 @@ import { neon } from '@neondatabase/serverless';
 import { revalidatePath, updateTag } from 'next/cache';
 import { cookies } from 'next/headers';
 import { sessieTokenOk, SESSIE_COOKIE } from '@/lib/auth';
+import { vandaagNl } from '@/lib/knoppen';
 
 // Elke actie is een openbaar POST-eindpunt, dus controleert zelf de sessie (de proxy doet dat ook, dit is de tweede slot).
 async function vereisInlog() {
@@ -30,6 +31,23 @@ export async function setLaadVanNet(aan) {
   await sql`
     INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
     VALUES ('laad_van_net', ${aan ? 'true' : 'false'}, NOW())
+    ON CONFLICT (sleutel) DO UPDATE SET
+      waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
+  `;
+  await markeerPush(sql);
+  revalidatePath('/ess');
+  updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
+  return aan;
+}
+
+// Server action: sla het balanceren van VANDAAG over (balansdag, balanskoop, hold, doorladen en forceer-balans). We bewaren de DATUM
+// waarvoor het geldt in plaats van een aan/uit-waarde: /api/laadvannet geeft alleen voor die dag true door, dus het vervalt vanzelf om middernacht.
+export async function setBalansOverslaan(aan) {
+  await vereisInlog();
+  const sql = neon(process.env.DATABASE_URL);
+  await sql`
+    INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
+    VALUES ('balans_overslaan', ${aan ? vandaagNl() : ''}, NOW())
     ON CONFLICT (sleutel) DO UPDATE SET
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;

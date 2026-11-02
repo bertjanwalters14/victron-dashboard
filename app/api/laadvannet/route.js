@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { revalidateTag } from 'next/cache';
 import { parseSchedule, effectiveState } from '@/lib/schedule';
-import { leesKnoppenRuw, KNOPPEN_TAG } from '@/lib/knoppen';
+import { leesKnoppenRuw, KNOPPEN_TAG, vandaagNl } from '@/lib/knoppen';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,28 +18,29 @@ export async function GET() {
   try {
     // v. 14-10: uit de cache (tag 'knoppen'), niet elke minuut uit Neon -- zie lib/knoppen.js
     const m = await leesKnoppenRuw();
-    const laadVanNetSchedule = parseSchedule(m['laad_van_net_schedule']);
     const keepChargedSchedule = parseSchedule(m['keep_charged_schedule']);
     const verkoopPauzeSchedule = parseSchedule(m['verkoop_pauze_schedule']);
     const reserveSocRaw = Number(m['reserve_soc']);
     const reserveSoc = (reserveSocRaw >= 10 && reserveSocRaw <= 40) ? reserveSocRaw : 25;
     return Response.json({
       success: true,
-      laadVanNet: effectiveState(m['laad_van_net'] === 'true', laadVanNetSchedule),
+      // 'Laden uit net' is uit de app gehaald: het algoritme beslist zelf (arbitrage-regels, dekking, balans). Altijd aan.
+      laadVanNet: true,
       keepCharged: effectiveState(m['keep_charged'] === 'true', keepChargedSchedule),
       verkoopPauze: effectiveState(m['verkoop_pauze'] === 'true', verkoopPauzeSchedule),
-      laadVanNetHandmatig: m['laad_van_net'] === 'true',
+      laadVanNetHandmatig: true,
       keepChargedHandmatig: m['keep_charged'] === 'true',
       verkoopPauzeHandmatig: m['verkoop_pauze'] === 'true',
-      laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule,
+      laadVanNetSchedule: { enabled: false, start: '12:00', end: '18:00' }, keepChargedSchedule, verkoopPauzeSchedule,
+      balansOverslaan: m['balans_overslaan'] === vandaagNl(),   // alleen true op de dag waarvoor is overgeslagen: vervalt om middernacht
       reserveSoc,
       pushToken: Number(m['push_nu']) || 0,   // wijzigt zodra iemand in de app "Ververs nu" indrukt -> Node-RED pusht dan meteen de status
     });
   } catch {
     const off = { enabled: false, start: '12:00', end: '18:00' };
     return Response.json({
-      success: true, laadVanNet: false, keepCharged: false, verkoopPauze: false,
-      laadVanNetHandmatig: false, keepChargedHandmatig: false, verkoopPauzeHandmatig: false,
+      success: true, laadVanNet: true, keepCharged: false, verkoopPauze: false, balansOverslaan: false,   // laden uit net blijft aan, ook als Neon plat ligt
+      laadVanNetHandmatig: true, keepChargedHandmatig: false, verkoopPauzeHandmatig: false,
       laadVanNetSchedule: off, keepChargedSchedule: off, verkoopPauzeSchedule: off,
       reserveSoc: 25, pushToken: 0,
     });

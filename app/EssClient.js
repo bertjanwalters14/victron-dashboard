@@ -2,7 +2,7 @@
 import { useState, useEffect, useTransition, useCallback } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { useRouter } from 'next/navigation';
-import { setLaadVanNet, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
+import { setBalansOverslaan, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
 import TabBar from './TabBar';
 
 // Energiestromen-kleuren, losjes naar VRM's eigen palet (cyaan=accu->net, oranje=PV->net, groen=PV->accu,
@@ -462,11 +462,11 @@ function SchakelKaart({ titel, sub, subKleur, aan, onToggle, bezig, aanKleur, ch
 
 const schemaTxt = (sch) => (sch && sch.enabled ? `Schema ${sch.start}–${sch.end} staat aan` : null);
 
-export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, keepCharged, verkoopPauze, laadVanNetSchedule, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
+export default function EssClient({ status, forecast, bijgewerkt, balansOverslaan, keepCharged, verkoopPauze, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
   const alle = pvDirectAlsPvNet((forecast || []).map(d => ({ ...d })));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
-  const [aan, setAan] = useState(!!laadVanNet);
+  const [overslaan, setOverslaan] = useState(!!balansOverslaan);
   const [vol, setVol] = useState(!!keepCharged);
   const [pauze, setPauze] = useState(!!verkoopPauze);
   const [dag, setDag] = useState('vandaag');   // 'vandaag' | 'morgen' | 'alles'
@@ -487,10 +487,10 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
   const spreadTxt = s.dbg?.dagSpreadKoop != null ? `€${Number(s.dbg.dagSpreadKoop).toFixed(2).replace('.', ',')}` : null;
   const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans && !geenBalansdag, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
 
-  function toggleLaden() {
-    const next = !aan;
-    setAan(next);
-    startTransition(async () => { await setLaadVanNet(next); volg(); });
+  function toggleBalans() {
+    const next = !overslaan;
+    setOverslaan(next);
+    startTransition(async () => { await setBalansOverslaan(next); volg(); });
   }
 
   function toggleVol() {
@@ -523,11 +523,9 @@ export default function EssClient({ status, forecast, bijgewerkt, laadVanNet, ke
         </section>
 
         <section className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SchakelKaart titel="Laden uit net" aan={aan} onToggle={toggleLaden} bezig={pending} aanKleur="bg-blue-600"
-            sub={schemaTxt(laadVanNetSchedule) || (aan ? 'Grid-arbitrage actief' : 'Alleen PV-laden')}
-            subKleur={schemaTxt(laadVanNetSchedule) ? 'text-amber-300' : aan ? 'text-blue-300' : 'text-gray-400'}>
-            <ScheduleEditor scheduleKey="laad_van_net" initial={laadVanNetSchedule} />
-          </SchakelKaart>
+          <SchakelKaart titel="Balanceren overslaan" aan={overslaan} onToggle={toggleBalans} bezig={pending} aanKleur="bg-blue-600"
+            sub={overslaan ? 'Vandaag geen balansdag (tot middernacht)' : (s.balansDoel && !geenBalansdag ? 'Balansdag staat aan, zet aan om over te slaan' : 'Balanceert alleen als het nodig is')}
+            subKleur={overslaan ? 'text-blue-300' : s.balansDoel && !geenBalansdag ? 'text-amber-300' : 'text-gray-400'} />
           <SchakelKaart titel="Accu altijd vol" aan={vol} onToggle={toggleVol} bezig={pending} aanKleur="bg-amber-500"
             sub={schemaTxt(keepChargedSchedule) || (vol ? 'Vol gehouden, geen verkoop' : 'Normale handel')}
             subKleur={schemaTxt(keepChargedSchedule) || vol ? 'text-amber-300' : 'text-gray-400'}>
