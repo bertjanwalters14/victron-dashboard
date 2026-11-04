@@ -232,7 +232,7 @@ function koopReden(koopUren, ctx) {
   return schema ? schemaTxt : restTxt;
 }
 
-function dagContext(data, ctx = {}) {
+function dagContext(data, ctx = {}) {   // ctx.metPlan: het plan in woorden geeft al wat er gebeurt en waarom, dan alleen het weer
   const temps = data.map(d => d.temp).filter(t => t != null);
   if (!temps.length) return null;   // geen forecast-data (Node-RED nog niet bijgewerkt, of geen dekking)
   const avgTemp = temps.reduce((s, t) => s + t, 0) / temps.length;
@@ -249,7 +249,51 @@ function dagContext(data, ctx = {}) {
     : verkoopUren > 0 ? `${verkoopUren} uur verkoop gepland`
     : 'vooral zelfverbruik';
 
-  return `${tempTxt} en ${pvTxt} → ${impact}`;
+  return ctx.metPlan ? `${tempTxt} en ${pvTxt}` : `${tempTxt} en ${pvTxt} → ${impact}`;
+}
+
+// Plan in gewone woorden (status.plan uit ess_logic.js v2.7): per blok wat er gebeurt en waarom. Alleen weergave, geen eigen rekenwerk.
+const PLAN_STIJL = {
+  'kopen-arbitrage': { label: 'Kopen', kleur: '#3b82f6' },
+  'kopen-dekking': { label: 'Kopen (dekking)', kleur: '#3b82f6' },
+  'kopen-balans': { label: 'Balanceren', kleur: '#3b82f6' },
+  verkopen: { label: 'Verkopen', kleur: '#22c55e' },
+  zon: { label: 'Zon laadt', kleur: '#fde047' },
+  huis: { label: 'Accu dekt huis', kleur: '#f59e0b' },
+  pvnet: { label: 'Zon naar het net', kleur: '#c084fc' },
+  gratis: { label: 'Gratis laden', kleur: '#06b6d4' },
+};
+
+function DagPlan({ plan, samenvatting, dag }) {
+  const nuU = new Date().getHours();
+  const blokken = plan.filter(b => dag === 'alles' || b.dag === dag);
+  if (!blokken.length) return null;
+  const zinnen = (dag === 'alles' ? ['vandaag', 'morgen'] : [dag]).filter(d => samenvatting && samenvatting[d]).map(d => (dag === 'alles' ? (d === 'vandaag' ? 'Vandaag: ' : 'Morgen: ') : '') + samenvatting[d]);
+  return (
+    <div className="mb-4">
+      <h3 className="mb-1 text-xs font-semibold text-gray-400">Plan in gewone woorden</h3>
+      {zinnen.length > 0 && <p className="mb-2 text-sm text-gray-200">{zinnen.join(' ')}</p>}
+      <ol className="space-y-2">
+        {blokken.map((b, i) => {
+          const stijl = PLAN_STIJL[b.soort] || { label: b.soort, kleur: '#64748b' };
+          const tot = Number(String(b.tot).slice(0, 2)) || 24;
+          const isNu = b.dag === 'vandaag' && Number(String(b.van).slice(0, 2)) <= nuU && nuU < tot;
+          return (
+            <li key={i} className={`flex gap-3 rounded-xl px-3 py-2 ${isNu ? 'bg-gray-700/60 ring-1 ring-gray-500' : 'bg-gray-800/50'}`}>
+              <div className="w-28 shrink-0">
+                <div className="text-sm font-medium tabular-nums text-gray-200">{dag === 'alles' && b.dag === 'morgen' ? 'morgen ' : ''}{b.van} tot {b.tot}</div>
+                <div className="text-xs tabular-nums text-gray-500">accu {b.soc_van}% → {b.soc_tot}%</div>
+              </div>
+              <div className="min-w-0">
+                <span className="mb-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium text-gray-950" style={{ background: stijl.kleur }}>{stijl.label}{isNu ? ' (nu)' : ''}</span>
+                <p className="text-sm text-gray-300">{b.tekst}</p>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
 }
 
 function EssTooltip({ active, payload }) {
@@ -485,7 +529,8 @@ export default function EssClient({ status, forecast, bijgewerkt, balansOverslaa
   // v2.2: bij een te kleine dagspread is er geen balansdag, ook al is er een onbalans gemeten (dan is een koopuur geen "om te balanceren")
   const geenBalansdag = !!s.balansDoel && s.balansDoel.includes('geen balansdag');
   const spreadTxt = s.dbg?.dagSpreadKoop != null ? `€${Number(s.dbg.dagSpreadKoop).toFixed(2).replace('.', ',')}` : null;
-  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans && !geenBalansdag, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
+  const plan = Array.isArray(s.plan) && s.plan.length ? s.plan : null;   // ontbreekt zolang Node-RED op een oudere versie (< v2.7) draait
+  const contextZin = dagContext(data, { metPlan: !!plan, keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans && !geenBalansdag, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
 
   function toggleBalans() {
     const next = !overslaan;
@@ -571,6 +616,8 @@ export default function EssClient({ status, forecast, bijgewerkt, balansOverslaa
               {contextZin}
             </div>
           )}
+
+          {plan && <DagPlan plan={plan} samenvatting={s.planSamenvatting} dag={dag} />}
 
           <h3 className="mb-1 text-xs font-semibold text-gray-400">Laden en prijs</h3>
           <ResponsiveContainer width="100%" height={260}>
