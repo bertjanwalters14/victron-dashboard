@@ -232,7 +232,7 @@ function koopReden(koopUren, ctx) {
   return schema ? schemaTxt : restTxt;
 }
 
-function dagContext(data, ctx = {}) {   // ctx.metPlan: het plan in woorden geeft al wat er gebeurt en waarom, dan alleen het weer
+function dagContext(data, ctx = {}) {
   const temps = data.map(d => d.temp).filter(t => t != null);
   if (!temps.length) return null;   // geen forecast-data (Node-RED nog niet bijgewerkt, of geen dekking)
   const avgTemp = temps.reduce((s, t) => s + t, 0) / temps.length;
@@ -249,101 +249,7 @@ function dagContext(data, ctx = {}) {   // ctx.metPlan: het plan in woorden geef
     : verkoopUren > 0 ? `${verkoopUren} uur verkoop gepland`
     : 'vooral zelfverbruik';
 
-  return ctx.metPlan ? `${tempTxt} en ${pvTxt}` : `${tempTxt} en ${pvTxt} → ${impact}`;
-}
-
-// Plan in gewone woorden (status.plan uit ess_logic.js v2.7): per blok wat er gebeurt en waarom. Alleen weergave, geen eigen rekenwerk.
-const PLAN_STIJL = {
-  'kopen-arbitrage': { label: 'Kopen', kleur: '#3b82f6' },
-  'kopen-dekking': { label: 'Kopen (dekking)', kleur: '#3b82f6' },
-  'kopen-balans': { label: 'Balanceren', kleur: '#3b82f6' },
-  verkopen: { label: 'Verkopen', kleur: '#22c55e' },
-  zon: { label: 'Zon laadt', kleur: '#fde047' },
-  huis: { label: 'Accu dekt huis', kleur: '#f59e0b' },
-  pvnet: { label: 'Zon naar het net', kleur: '#c084fc' },
-  gratis: { label: 'Gratis laden', kleur: '#06b6d4' },
-};
-
-// Rustig plan: alleen de ACTIES (kopen, verkopen, zon naar het net, gratis laden) krijgen een opvallend blok met een korte zin;
-// de rustige stukken ertussen (accu dekt het huis, zon laadt) worden een stille regel. De volledige uitleg staat achter "Waarom?".
-const RUST = ['huis', 'zon'];
-const eersteZin = (t) => { const i = t.indexOf('. '); return i < 0 ? t : t.slice(0, i + 1); };
-const restZin = (t) => { const i = t.indexOf('. '); return i < 0 ? '' : t.slice(i + 2); };
-
-function maakRijen(blokken) {
-  const rijen = [];
-  blokken.forEach(b => {
-    const laatste = rijen[rijen.length - 1];
-    if (RUST.includes(b.soort) && laatste && laatste.rust && laatste.dag === b.dag) {
-      laatste.tot = b.tot; laatste.soc_tot = b.soc_tot; laatste.soorten.push(b.soort); laatste.teksten.push(b.tekst);
-    } else if (RUST.includes(b.soort)) {
-      rijen.push({ rust: true, dag: b.dag, van: b.van, tot: b.tot, soc_van: b.soc_van, soc_tot: b.soc_tot, soorten: [b.soort], teksten: [b.tekst] });
-    } else {
-      rijen.push({ rust: false, dag: b.dag, van: b.van, tot: b.tot, soc_van: b.soc_van, soc_tot: b.soc_tot, soort: b.soort, tekst: b.tekst });
-    }
-  });
-  return rijen;
-}
-
-function rustTekst(soorten) {
-  const huis = soorten.includes('huis'), zon = soorten.includes('zon');
-  return huis && zon ? 'De accu dekt het huis, de zon laadt hem bij' : zon ? 'De zon laadt de accu' : 'De accu dekt het huis';
-}
-
-function DagPlan({ plan, samenvatting, dag }) {
-  const nuU = new Date().getHours();
-  const blokken = plan.filter(b => dag === 'alles' || b.dag === dag);
-  if (!blokken.length) return null;
-  const rijen = maakRijen(blokken);
-  const zinnen = (dag === 'alles' ? ['vandaag', 'morgen'] : [dag]).filter(d => samenvatting && samenvatting[d]).map(d => (dag === 'alles' ? (d === 'vandaag' ? 'Vandaag: ' : 'Morgen: ') : '') + samenvatting[d]);
-  const isNu = (r) => r.dag === 'vandaag' && Number(String(r.van).slice(0, 2)) <= nuU && nuU < (Number(String(r.tot).slice(0, 2)) || 24);
-  const tijd = (r) => (dag === 'alles' && r.dag === 'morgen' ? 'morgen ' : '') + r.van + ' tot ' + r.tot;
-  return (
-    <div className="mb-4">
-      <h3 className="mb-1 text-xs font-semibold text-gray-400">Plan in gewone woorden</h3>
-      {zinnen.length > 0 && <p className="mb-3 text-sm text-gray-200">{zinnen.join(' ')}</p>}
-      <ol className="space-y-1.5">
-        {rijen.map((r, i) => {
-          const nu = isNu(r);
-          if (r.rust) {
-            const bijnaLeeg = r.soc_tot <= 8;
-            return (
-              <li key={i} className={'rounded-lg px-3 py-1 ' + (nu ? 'bg-gray-800/70 ring-1 ring-gray-600' : '')}>
-                <div className="flex flex-wrap items-baseline gap-x-3 text-xs text-gray-500">
-                  <span className="w-28 shrink-0 tabular-nums">{tijd(r)}</span>
-                  <span className="text-gray-400">{rustTekst(r.soorten)}{nu ? ' (nu)' : ''}</span>
-                  <span className="tabular-nums">{r.soc_van}% → {r.soc_tot}%</span>
-                  {bijnaLeeg && <span className="rounded-full bg-amber-900/50 px-2 py-0.5 text-amber-300">bijna leeg</span>}
-                </div>
-                <details className="ml-[7.75rem]">
-                  <summary className="cursor-pointer text-xs text-gray-600 hover:text-gray-400">Waarom?</summary>
-                  <div className="mt-1 space-y-1 text-xs text-gray-400">{r.teksten.map((t, k) => <p key={k}>{t}</p>)}</div>
-                </details>
-              </li>
-            );
-          }
-          const stijl = PLAN_STIJL[r.soort] || { label: r.soort, kleur: '#64748b' };
-          const rest = restZin(r.tekst);
-          return (
-            <li key={i} className={'rounded-xl px-3 py-2.5 ' + (nu ? 'bg-gray-700/60 ring-1 ring-gray-500' : 'bg-gray-800/60')}>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-gray-950" style={{ background: stijl.kleur }}>{stijl.label}{nu ? ' (nu)' : ''}</span>
-                <span className="text-sm font-medium tabular-nums text-gray-100">{tijd(r)}</span>
-                <span className="text-xs tabular-nums text-gray-400">accu {r.soc_van}% → {r.soc_tot}%</span>
-              </div>
-              <p className="mt-1 text-sm text-gray-200">{eersteZin(r.tekst)}</p>
-              {rest && (
-                <details>
-                  <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-300">Waarom?</summary>
-                  <p className="mt-1 text-xs text-gray-400">{rest}</p>
-                </details>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
+  return `${tempTxt} en ${pvTxt} → ${impact}`;
 }
 
 function EssTooltip({ active, payload }) {
@@ -579,8 +485,7 @@ export default function EssClient({ status, forecast, bijgewerkt, balansOverslaa
   // v2.2: bij een te kleine dagspread is er geen balansdag, ook al is er een onbalans gemeten (dan is een koopuur geen "om te balanceren")
   const geenBalansdag = !!s.balansDoel && s.balansDoel.includes('geen balansdag');
   const spreadTxt = s.dbg?.dagSpreadKoop != null ? `€${Number(s.dbg.dagSpreadKoop).toFixed(2).replace('.', ',')}` : null;
-  const plan = Array.isArray(s.plan) && s.plan.length ? s.plan : null;   // ontbreekt zolang Node-RED op een oudere versie (< v2.7) draait
-  const contextZin = dagContext(data, { metPlan: !!plan, keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans && !geenBalansdag, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
+  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans && !geenBalansdag, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
 
   function toggleBalans() {
     const next = !overslaan;
@@ -666,8 +571,6 @@ export default function EssClient({ status, forecast, bijgewerkt, balansOverslaa
               {contextZin}
             </div>
           )}
-
-          {plan && <DagPlan plan={plan} samenvatting={s.planSamenvatting} dag={dag} />}
 
           <h3 className="mb-1 text-xs font-semibold text-gray-400">Laden en prijs</h3>
           <ResponsiveContainer width="100%" height={260}>
