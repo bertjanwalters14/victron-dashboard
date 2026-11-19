@@ -27,6 +27,33 @@ function verkoopprijsKaal(spot) {
   return TERUGLEVER_BODEM_FRACTIE * (spot + 0.0197 + 0.0916) + SELL_ADJ;
 }
 
+// Voorraadmutatie (nov 2026): de meerwaarde per dag telde alleen wat BINNEN die dag gekocht en gebruikt is.
+// Wat er aan het eind van de dag nog in de accu zit (of juist uit de voorraad van gisteren kwam) telde niet
+// mee, dus een dag met laden zag er slecht uit en de dag erna te goed (16-11: -4,71, 17-11: +5,57, samen
+// +0,86). Nu telt de verandering van het SOC over de dag mee, gewaardeerd tegen een VASTE prijs per
+// opgeslagen kWh (ongeveer de gemiddelde inkoopprijs 0,26 / laadrendement 0,955). Een vaste prijs is
+// bewust: de mutaties van opeenvolgende dagen heffen elkaar dan exact op, over weken verandert het totaal
+// nauwelijks (alleen het verschil tussen begin- en eindvoorraad), de verdeling per dag wordt eerlijker.
+const BATT_KWH       = 32;
+const VOORRAAD_PRIJS = 0.27;   // EUR per opgeslagen kWh
+
+// SOC aan het begin en eind van de dag (eerste en laatste kwartier uit VRM). null als VRM niets geeft.
+async function haalSocRand(start, end) {
+  try {
+    const res = await fetch(
+      `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=custom&attributeCodes[]=SOC&interval=15mins&start=${start}&end=${end}`,
+      { headers: { 'x-authorization': `Token ${TOKEN}` } }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const reeks = (json?.records?.SOC || []).filter(([, v]) => typeof v === 'number');
+    if (reeks.length < 2) return null;
+    return { begin: reeks[0][1], eind: reeks[reeks.length - 1][1] };
+  } catch {
+    return null;
+  }
+}
+
 async function haalSpotPrijzen(datumStr) {
   // Nederlandse dag loopt van 00:00 CEST = 22:00 UTC daarvoor t/m 23:59 CEST = 21:59 UTC
   // We halen daarom prijzen op voor het UTC-venster dat de volledige Nederlandse dag dekt.
@@ -44,7 +71,7 @@ async function haalSpotPrijzen(datumStr) {
   return json?.Prices || [];
 }
 
-async function syncEénDag(datumStr) {
+async function syncEénDag(datumStr, { schrijf = true } = {}) {
   // Nederlandse dag-grenzen (CEST = UTC+2, CET = UTC+1), zie lib/tijd.js
   const { start, eind: end } = nlDagVensterSec(datumStr);
 
@@ -133,7 +160,15 @@ async function syncEénDag(datumStr) {
   // retail-opslag van toepassing. (Eerdere versie vergeleek totaalWinst met een apart "winstZonderBat"-
   // totaal van een andere scope, wat Bc dubbel liet meetellen -- deze rechtstreekse formule niet.)
   const winstPbKaal   = berekenSomKaal('Pb');
-  const batMeerwaarde = winstBg + winstBc - kostenGb - winstPbKaal - accuKosten;
+
+  // Voorraadmutatie: (SOC eind - SOC begin) x capaciteit x vaste prijs per opgeslagen kWh (zie boven).
+  // Zonder SOC-data (VRM geeft niets) tellen we niets mee, zoals voorheen.
+  const socRand = await haalSocRand(start, end);
+  const voorraadMutatie = socRand
+    ? ((socRand.eind - socRand.begin) / 100) * BATT_KWH * VOORRAAD_PRIJS
+    : 0;
+
+  const batMeerwaarde = winstBg + winstBc - kostenGb - winstPbKaal - accuKosten + voorraadMutatie;
 
   // Werkelijke netto energiekosten van het HELE huishouden die dag (niet accu-specifiek, in
   // tegenstelling tot batMeerwaarde hierboven) -- voor het jaaroverzicht (voorschot vs. werkelijk).
@@ -143,16 +178,18 @@ async function syncEénDag(datumStr) {
   const winstPg = berekenSomVerkoop('Pg');
   const nettoKosten = kostenGb + kostenGc - winstBg - winstPg;
 
-  await upsertEnergieData({
-    datum:           datumStr,
-    solar_yield_kwh: PgKwh + PcKwh + PbKwh,
-    verbruik_kwh:    BcKwh + PcKwh + GcKwh,
-    net_import_kwh:  GbKwh + GcKwh,
-    net_export_kwh:  BgKwh + PgKwh,
-    winst_euro:      totaalWinst,
-    bat_meerwaarde:  batMeerwaarde,
-    netto_kosten:    nettoKosten,
-  });
+  if (schrijf) {
+    await upsertEnergieData({
+      datum:           datumStr,
+      solar_yield_kwh: PgKwh + PcKwh + PbKwh,
+      verbruik_kwh:    BcKwh + PcKwh + GcKwh,
+      net_import_kwh:  GbKwh + GcKwh,
+      net_export_kwh:  BgKwh + PgKwh,
+      winst_euro:      totaalWinst,
+      bat_meerwaarde:  batMeerwaarde,
+      netto_kosten:    nettoKosten,
+    });
+  }
 
   return {
     datum:      datumStr,
@@ -171,8 +208,12 @@ async function syncEénDag(datumStr) {
     winst:         totaalWinst.toFixed(2),
     winstPbKaal:   winstPbKaal.toFixed(2),
     batMeerwaarde: batMeerwaarde.toFixed(2),
+    voorraadMutatie: voorraadMutatie.toFixed(2),
+    socBegin:      socRand ? socRand.begin : null,
+    socEind:       socRand ? socRand.eind : null,
     nettoKosten:   nettoKosten.toFixed(2),
     salderingActief,
+    opgeslagen:    schrijf,
   };
 }
 
@@ -181,6 +222,9 @@ export async function GET(request) {
   if (!(await magApi(request))) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  // ?droog=true: alles uitrekenen en teruggeven, maar NIETS in de database schrijven (om een wijziging te toetsen).
+  const opties = { schrijf: searchParams.get("droog") !== "true" };
 
   try {
     // Backfill: ?backfill=true → hersynct alle datums die al in energie_data staan
@@ -192,7 +236,7 @@ export async function GET(request) {
       for (const { datum } of bestaand) {
         const dagStr = datum.split('T')[0];
         try {
-          const res = await syncEénDag(dagStr);
+          const res = await syncEénDag(dagStr, opties);
           resultaten.push({ ...res, status: 'ok' });
         } catch (e) {
           resultaten.push({ datum: dagStr, status: 'fout', fout: e.message });
@@ -215,7 +259,7 @@ export async function GET(request) {
       while (huidige <= einde) {
         const dagStr = huidige.toISOString().split('T')[0];
         try {
-          const res = await syncEénDag(dagStr);
+          const res = await syncEénDag(dagStr, opties);
           resultaten.push({ ...res, status: 'ok' });
         } catch (e) {
           resultaten.push({ datum: dagStr, status: 'fout', fout: e.message });
@@ -237,7 +281,7 @@ export async function GET(request) {
       datumStr = gisteren.toISOString().split('T')[0];
     }
 
-    const resultaat = await syncEénDag(datumStr);
+    const resultaat = await syncEénDag(datumStr, opties);
     return Response.json({ success: true, prijsBron: 'anwb', ...resultaat });
 
   } catch (err) {
