@@ -1,5 +1,6 @@
 import { nlVandaagStr, nlDagVensterSec } from '@/lib/tijd';
 import { magApi } from '@/lib/auth';
+import { haalSocRand, voorraadMutatie as berekenVoorraadMutatie } from '@/lib/voorraad';
 
 const SITE_ID = process.env.VICTRON_SITE_ID;
 const TOKEN   = process.env.VICTRON_API_TOKEN;
@@ -26,7 +27,7 @@ export async function GET(request) {
 
     // VRM-uurdata en EnergyZero-prijzen van vandaag tegelijk ophalen (voorheen na elkaar: de twee wachttijden
     // telden op). De prijzen van een dag veranderen niet meer, dus die mogen een uur uit de cache komen.
-    const [victronRes, prijsRes] = await Promise.all([
+    const [victronRes, prijsRes, socRand] = await Promise.all([
       fetch(
         `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=kwh&interval=hours&start=${start}&end=${end}`,
         { headers: { 'x-authorization': `Token ${TOKEN}` } }
@@ -35,6 +36,8 @@ export async function GET(request) {
         `https://api.energyzero.nl/v1/energyprices?fromDate=${new Date(venster.start * 1000).toISOString()}&tillDate=${new Date(venster.eind * 1000).toISOString()}&interval=4&usageType=1&inclBtw=false`,
         { next: { revalidate: 3600 } }
       ),
+      // SOC aan het begin van de dag en nu, voor de voorraadmutatie (zie lib/voorraad.js).
+      haalSocRand(start, end),
     ]);
     const [victronData, prijsData] = await Promise.all([victronRes.json(), prijsRes.json()]);
     const records = victronData?.records || {};
@@ -85,7 +88,10 @@ export async function GET(request) {
     const zonKwhVandaag = +(PgKwh + PcKwh + PbKwh).toFixed(2);
 
     const winstPbKaal = berekenSomKaal('Pb');
-    const winst = winstBg + winstBc - kostenGb - winstPbKaal - accuKosten;
+    // Voorraadmutatie: wat er sinds middernacht in de accu bijgekomen (of eruit gegaan) is, zodat een ochtend
+    // met laden niet als verlies telt. Zelfde berekening als de dagwaarde in /api/sync.
+    const voorraadMutatie = berekenVoorraadMutatie(socRand);
+    const winst = winstBg + winstBc - kostenGb - winstPbKaal - accuKosten + voorraadMutatie;
 
     return Response.json({
       success: true,
@@ -98,6 +104,7 @@ export async function GET(request) {
       kostenGc:    kostenGc.toFixed(2),
       kostenGb:    kostenGb.toFixed(2),
       accuKosten:  accuKosten.toFixed(2),
+      voorraadMutatie: voorraadMutatie.toFixed(2),
       bijgewerkt: nu.toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam' }),
     });
 
