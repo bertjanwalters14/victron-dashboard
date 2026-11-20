@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
 import { uitloggen } from './inloggen';
 
-// Gedeelde hoofdnavigatie: één app, vier tabs. Het zijn bewust drie routes (Link = client-side navigatie,
+// Gedeelde hoofdnavigatie: één app, vijf tabs. Het zijn bewust losse routes (Link = client-side navigatie,
 // voelt als één pagina) zodat Resultaten/Jaaroverzicht hun eigen 6-uurs-cache houden en alleen Live
 // sturing altijd vers is -- alles in één pagina zou elke keer alle queries op Neon draaien.
 const Icoon = ({ children }) => (
@@ -15,6 +15,7 @@ const TABS = [
   { href: '/', label: 'Live sturing', icoon: <Icoon><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" /></Icoon> },
   { href: '/resultaten', label: 'Resultaten', icoon: <Icoon><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></Icoon> },
   { href: '/jaaroverzicht', label: 'Jaaroverzicht', icoon: <Icoon><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></Icoon> },
+  { href: '/cellen', label: 'Cellen', icoon: <Icoon><rect x="2" y="7" width="18" height="10" rx="2" /><line x1="22" y1="11" x2="22" y2="13" /><line x1="6" y1="10" x2="6" y2="14" /><line x1="10" y1="10" x2="10" y2="14" /><line x1="14" y1="10" x2="14" y2="14" /></Icoon> },
   { href: '/machines', label: 'Machines', icoon: <Icoon><rect x="4" y="2" width="16" height="20" rx="2" /><circle cx="12" cy="14" r="4" /><line x1="8" y1="6" x2="8.01" y2="6" /><line x1="12" y1="6" x2="12.01" y2="6" /></Icoon> },
 ];
 
