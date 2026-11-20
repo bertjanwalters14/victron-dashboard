@@ -132,8 +132,9 @@ export default function MachinesClient({ forecast, bijgewerkt }) {
 
   return (
     <main className="min-h-screen bg-gray-950 text-gray-50">
-      <div className="mx-auto max-w-2xl px-4 py-5 md:py-8">
+      <div className="mx-auto max-w-5xl px-4 py-5 md:py-8">
         <TabBar />
+        <div className="max-w-2xl">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">Machines aanzetten</h1>
@@ -161,6 +162,7 @@ export default function MachinesClient({ forecast, bijgewerkt }) {
         <p className="mt-3 text-xs text-gray-500">
           Gebaseerd op de uurprijzen en de zonverwachting{tijdVan(bijgewerkt) ? ` (bijgewerkt om ${tijdVan(bijgewerkt)})` : ''}. Zonnestroom die je zelf gebruikt telt zwaarder mee, uitgaand van de lagere terugleververgoeding na het einde van de saldering (1 januari 2027). Het advies verandert niets aan de sturing van de accu.
         </p>
+        </div>
       </div>
     </main>
   );

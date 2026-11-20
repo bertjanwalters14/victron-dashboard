@@ -57,11 +57,11 @@ export default function TabBar() {
         {TABS.map(t => {
           const actief = t.href === '/' ? pad === '/' : pad === t.href || pad.startsWith(t.href + '/');
           return (
-            // Op mobiel alleen het icoon (de tekst past daar niet naast de thema- en uitlogknop); vanaf `sm` icoon + tekst.
+            // Op mobiel alleen het icoon (de tekst past daar niet naast de thema- en uitlogknop); vanaf `md` (768 px, waar vijf tabs met tekst plus de twee knoppen passen) icoon + tekst.
             // aria-label/title houden de naam beschikbaar voor schermlezers en bij lang indrukken.
             <Link key={t.href} href={t.href} aria-current={actief ? 'page' : undefined} aria-label={t.label} title={t.label}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium transition-colors sm:px-3.5 sm:py-2 ${actief ? 'bg-gray-800 text-gray-50' : 'text-gray-400 hover:text-gray-200'}`}>
-              {t.icoon}<span className="hidden sm:inline">{t.label}</span>
+              className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium transition-colors md:px-3.5 md:py-2 ${actief ? 'bg-gray-800 text-gray-50' : 'text-gray-400 hover:text-gray-200'}`}>
+              {t.icoon}<span className="hidden md:inline">{t.label}</span>
             </Link>
           );
         })}

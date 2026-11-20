@@ -48,6 +48,30 @@ function Tegel({ label, waarde, sub, subKleur = 'text-gray-400' }) {
   );
 }
 
+// Dagen geleden op kalenderdag (Amsterdam), niet op 24-uursblokken: "gisteren" is gisteren, ook als het 20 uur terug is.
+const nlDatum = (t) => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
+function dagenGeleden(t) {
+  return Math.round((Date.parse(nlDatum(Date.now())) - Date.parse(nlDatum(t))) / 86400000);
+}
+const wanneer = (n) => (n <= 0 ? 'vandaag' : n === 1 ? 'gisteren' : `${n} dagen geleden`);
+const duur = (min) => (min >= 60 ? `${Math.floor(min / 60)} u${min % 60 ? ` ${min % 60} min` : ''}` : `${min} min`);
+const dagMaand = (t) => new Date(t).toLocaleDateString('nl-NL', { timeZone: 'Europe/Amsterdam', day: 'numeric', month: 'numeric' });
+const TOP_LANG_GENOEG_MIN = 120;   // zo lang telt een top voor de sturing als echte top (topLangGenoeg in ess_logic.js)
+
+function TopRegel({ top, groot }) {
+  const lang = top.minuten >= TOP_LANG_GENOEG_MIN;
+  const eind = top.eindVerschil < 0.03 ? 'text-green-300' : top.eindVerschil < 0.07 ? 'text-amber-300' : 'text-red-300';
+  return (
+    <div className={`flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 ${groot ? '' : 'px-3 py-2 text-sm'}`}>
+      <span className={groot ? 'text-lg font-semibold' : 'text-gray-300'}>{groot ? `${wanneer(dagenGeleden(top.start))} (${dagMaand(top.start)})` : `${dagMaand(top.start)} · ${wanneer(dagenGeleden(top.start))}`}</span>
+      <span className="text-gray-400">
+        {duur(top.minuten)} boven 3,45 V · hoogste {v3(top.maxCel)} V · verschil {Math.round(top.maxVerschil * 1000)} → <span className={eind}>{Math.round(top.eindVerschil * 1000)} mV</span>
+        {lang ? '' : ' · korter dan 2 uur'}
+      </span>
+    </div>
+  );
+}
+
 const tijdKort = (t) => new Date(t).toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' });
 const dagTijd = (t) => new Date(t).toLocaleString('nl-NL', { timeZone: 'Europe/Amsterdam', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 const dagKort = (t) => new Date(t).toLocaleDateString('nl-NL', { timeZone: 'Europe/Amsterdam', weekday: 'short', day: 'numeric' });
@@ -103,7 +127,7 @@ export default function CellenClient() {
 
   return (
     <main className="min-h-screen bg-gray-950 text-gray-50">
-      <div className="mx-auto max-w-2xl px-4 py-5 md:py-8">
+      <div className="mx-auto max-w-5xl px-4 py-5 md:py-8">
         <TabBar />
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -128,7 +152,7 @@ export default function CellenClient() {
 
         {nu ? (
           <>
-            <div className="mb-3 grid grid-cols-2 gap-3">
+            <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
               <Tegel label="Laagste cel" waarde={`${v3(nu.laagste.v)} V`} sub={`${celNaam(nu.laagste.id)}${laagsteS.tekst ? ` · ${laagsteS.tekst}` : ''}`} subKleur={laagsteS.kleur} />
               <Tegel label="Hoogste cel" waarde={`${v3(nu.hoogste.v)} V`} sub={celNaam(nu.hoogste.id)} />
               <Tegel label="Verschil" waarde={mv(verschilNu)} sub={stand.tekst} subKleur={stand.kleur} />
@@ -140,6 +164,27 @@ export default function CellenClient() {
               Het verschil is vooral onderin (onder ± 40% SOC) en aan de top (vanaf ± 97%) zinvol; in het midden zijn de celspanningen bij LFP zo vlak dat ongelijke cellen toch dicht bij elkaar liggen.
             </p>
           </>
+        ) : null}
+
+        {data ? (
+          <div className={`${KAART} mb-3 p-4`}>
+            <h2 className="mb-2 text-sm font-semibold text-gray-300">Laatste top boven 3,45 V</h2>
+            {data.tops && data.tops.length ? (
+              <>
+                <TopRegel top={data.tops[0]} groot />
+                <p className="mt-1 text-xs text-gray-500">
+                  Het verschil gaat van het grootste verschil tijdens de top naar wat er aan het eind overbleef. Alleen boven 3,45 V balanceert de BMS; een top van minstens 2 uur telt voor de sturing als echte balans.
+                </p>
+                {data.tops.length > 1 ? (
+                  <div className="mt-3 divide-y divide-gray-800 rounded-xl border border-gray-800">
+                    {data.tops.slice(1).map(t => <TopRegel key={t.start} top={t} />)}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm text-gray-400">In de afgelopen 30 dagen kwam geen enkele cel boven 3,45 V.</p>
+            )}
+          </div>
         ) : null}
 
         {reeks.length > 1 ? (

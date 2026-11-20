@@ -222,8 +222,9 @@ export default function JaaroverzichtClient({ data }) {
 
   return (
     <main className="min-h-screen bg-gray-950 text-gray-50">
-      <div className="max-w-3xl mx-auto px-4 py-5 md:py-8">
+      <div className="max-w-5xl mx-auto px-4 py-5 md:py-8">
         <TabBar />
+        <div className="max-w-3xl">
         <h1 className="text-2xl md:text-3xl font-bold mb-6">Jaaroverzicht</h1>
 
         {cycli.length === 0 && (
@@ -236,6 +237,7 @@ export default function JaaroverzichtClient({ data }) {
           Voorschot = €{VOORSCHOT_PER_MAAND}/maand, evenredig verdeeld over de dagen met data.
           Contractjaar loopt van 9 november t/m 8 november, gelijk aan de ANWB-jaarafrekening.
         </p>
+        </div>
       </div>
     </main>
   );

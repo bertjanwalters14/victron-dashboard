@@ -12,6 +12,40 @@ const TOKEN   = process.env.VICTRON_API_TOKEN;
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
+const TOP_V = 3.45;   // hoogste cel vanaf hier = echte top (zelfde grens als `topNu` in ess_logic.js)
+
+// Tops: aaneengesloten stukken waarin de hoogste cel >= 3,45 V is, uit kwartierwaarden (gaten tot 30 min
+// worden samengevoegd). Per top: begin, eind, duur, het grootste verschil tussen hoogste en laagste cel
+// tijdens de top, en het kleinste verschil in het laatste uur (wat er na het balanceren van over is).
+function bepaalTops(stats) {
+  const min = new Map((stats.mcV || []).map(([t, v]) => [t, num(v)]));
+  const punten = [];
+  for (const [t, v] of stats.McV || []) {
+    const hoog = num(v), laag = min.get(t);
+    if (hoog != null && laag != null) punten.push({ t, hoog, verschil: hoog - laag });
+  }
+  punten.sort((a, b) => a.t - b.t);
+  const tops = [];
+  let cur = null;
+  for (const p of punten) {
+    if (p.hoog < TOP_V) continue;
+    if (cur && p.t - cur.laatste <= 30 * 60000) { cur.punten.push(p); cur.laatste = p.t; }
+    else { cur = { punten: [p], laatste: p.t }; tops.push(cur); }
+  }
+  return tops.map((x) => {
+    const eersteT = x.punten[0].t;
+    const staart = x.punten.slice(-4);
+    return {
+      start: eersteT,
+      eind: x.laatste + 15 * 60000,
+      minuten: Math.round((x.laatste - eersteT) / 60000) + 15,
+      maxVerschil: Math.round(Math.max(...x.punten.map((p) => p.verschil)) * 1000) / 1000,
+      eindVerschil: Math.round(Math.min(...staart.map((p) => p.verschil)) * 1000) / 1000,
+      maxCel: Math.round(Math.max(...x.punten.map((p) => p.hoog)) * 1000) / 1000,
+    };
+  });
+}
+
 export async function GET(request) {
   if (!(await magApi(request))) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -26,12 +60,17 @@ export async function GET(request) {
     const interval = dagen <= 3 ? '15mins' : 'hours';
     const headers = { 'x-authorization': `Token ${TOKEN}` };
 
-    const [statsRes, diagRes] = await Promise.all([
+    const [statsRes, diagRes, topsRes] = await Promise.all([
       fetch(
         `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=custom&attributeCodes[]=mcV&attributeCodes[]=McV&attributeCodes[]=SOC&interval=${interval}&start=${start}&end=${eind}`,
         { headers }
       ),
       fetch(`https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/diagnostics?count=1000`, { headers }),
+      // De laatste 30 dagen per kwartier, los van de gekozen periode, voor de lijst met tops.
+      fetch(
+        `https://vrmapi.victronenergy.com/v2/installations/${SITE_ID}/stats?type=custom&attributeCodes[]=mcV&attributeCodes[]=McV&interval=15mins&start=${eind - 30 * 86400}&end=${eind}`,
+        { headers }
+      ),
     ]);
     if (!statsRes.ok) throw new Error(`VRM stats fout: ${statsRes.status}`);
     const stats = (await statsRes.json())?.records || {};
@@ -74,7 +113,13 @@ export async function GET(request) {
       }
     }
 
-    return Response.json({ success: true, dagen, interval, nu, reeks });
+    // Tops van de laatste 30 dagen, nieuwste eerst (maximaal 8).
+    let tops = [];
+    if (topsRes.ok) {
+      tops = bepaalTops((await topsRes.json())?.records || {}).reverse().slice(0, 8);
+    }
+
+    return Response.json({ success: true, dagen, interval, nu, reeks, tops });
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 });
   }
