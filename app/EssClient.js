@@ -395,7 +395,7 @@ function BalansPlanEditor({ plan, onPlan, overslaan, bezig }) {
         {plan ? knop('geen', 'Annuleren') : null}
       </div>
       {overslaan ? <div className="mb-2 text-amber-300">Vandaag kan niet: "Balanceren overslaan" staat aan.</div> : null}
-      <div className="text-gray-400">Kies je morgen, dan gaat het plan om middernacht in en vervalt het aan het eind van die dag of zodra de top is gehaald.</div>
+      <div className="text-gray-400">Kies je morgen, dan zie je het plan in de planning van morgen zodra de prijzen binnen zijn (rond 15:00). Het gaat om middernacht in en vervalt aan het eind van die dag of zodra de top is gehaald.</div>
       <div className="mt-2 flex justify-end">
         <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300">Sluiten</button>
       </div>

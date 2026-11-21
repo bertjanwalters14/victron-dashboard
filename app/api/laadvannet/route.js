@@ -37,13 +37,14 @@ export async function GET() {
       // (vandaag of morgen, anders leeg) is er voor de statusregel in Node-RED.
       balansPlan: planKeuze(m['balans_plan']) === 'vandaag' && m['balans_overslaan'] !== vandaagNl(),
       balansPlanDatum: planKeuze(m['balans_plan']) ? m['balans_plan'] : '',
+      balansPlanMorgen: planKeuze(m['balans_plan']) === 'morgen',   // v2.16: vanaf ca. 15:00 (prijzen van morgen binnen) plant de prognose de balansdag van morgen al
       reserveSoc,
       pushToken: Number(m['push_nu']) || 0,   // wijzigt zodra iemand in de app "Ververs nu" indrukt -> Node-RED pusht dan meteen de status
     });
   } catch {
     const off = { enabled: false, start: '12:00', end: '18:00' };
     return Response.json({
-      success: true, laadVanNet: true, keepCharged: false, verkoopPauze: false, balansOverslaan: false, balansPlan: false, balansPlanDatum: '',   // laden uit net blijft aan, ook als Neon plat ligt
+      success: true, laadVanNet: true, keepCharged: false, verkoopPauze: false, balansOverslaan: false, balansPlan: false, balansPlanDatum: '', balansPlanMorgen: false,   // laden uit net blijft aan, ook als Neon plat ligt
       laadVanNetHandmatig: true, keepChargedHandmatig: false, verkoopPauzeHandmatig: false,
       laadVanNetSchedule: off, keepChargedSchedule: off, verkoopPauzeSchedule: off,
       reserveSoc: 25, pushToken: 0,
