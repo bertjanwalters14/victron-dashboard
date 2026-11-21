@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { ComposedChart, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import TabBar from './TabBar';
+import CelKaart from './CelKaart';
 
 const KAART = 'rounded-2xl border border-gray-800 bg-gray-900/60';
 const PERIODES = [1, 3, 7, 14];
@@ -129,9 +130,13 @@ export default function CellenClient() {
     <main className="min-h-screen bg-gray-950 text-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-5 md:py-8">
         <TabBar />
+        <h1 className="mb-4 text-2xl font-bold">Cellen</h1>
+
+        <CelKaart />
+
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">Cellen</h1>
+            <h2 className="text-lg font-semibold">Verloop uit VRM</h2>
             <p className="text-sm text-gray-400">Laagste en hoogste celspanning van de accu, rechtstreeks uit VRM.</p>
           </div>
           <div className="inline-flex gap-1 rounded-xl border border-gray-800 bg-gray-900 p-1" role="group" aria-label="Periode">

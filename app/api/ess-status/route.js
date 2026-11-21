@@ -8,8 +8,10 @@ function getDb() {
   return neon(url);
 }
 
-// POST — ontvangt de live ESS-beslissing van Node-RED (status + forecast).
-// Body: { status: {...}, forecast: [...] }
+// POST — ontvangt de live ESS-beslissing van Node-RED (status + forecast, en sinds 21-11-2026 de celspanningen per pack).
+// Body: { status: {...}, forecast: [...], cellen: { t, packs: [...] } | null }
+// `cellen` komt uit global.ess_cellen van de meetflow "Celspanningen" (zie celdata/). Ontbreekt het in een push (meetflow uit,
+// oudere push-node), dan blijft de vorige waarde staan: de kaart in de app toont dan hoe oud die is.
 export async function POST(request) {
   const { searchParams } = new URL(request.url);
   if (searchParams.get('secret') !== process.env.CRON_SECRET) {
@@ -19,6 +21,8 @@ export async function POST(request) {
     const body = await request.json();
     const status = body.status ?? {};
     const forecast = Array.isArray(body.forecast) ? body.forecast : [];
+    const cellenRuw = body.cellen && typeof body.cellen === 'object' && Array.isArray(body.cellen.packs) ? JSON.stringify(body.cellen) : null;
+    const cellen = cellenRuw && cellenRuw.length <= 50000 ? cellenRuw : null;   // 2 packs zijn ~3 kB; alles boven 50 kB is geen celdata
 
     const sql = getDb();
     await sql`
@@ -29,12 +33,14 @@ export async function POST(request) {
         bijgewerkt timestamptz DEFAULT NOW()
       )
     `;
+    await sql`ALTER TABLE ess_live ADD COLUMN IF NOT EXISTS cellen jsonb`;
     await sql`
-      INSERT INTO ess_live (id, status, forecast, bijgewerkt)
-      VALUES (1, ${JSON.stringify(status)}::jsonb, ${JSON.stringify(forecast)}::jsonb, NOW())
+      INSERT INTO ess_live (id, status, forecast, cellen, bijgewerkt)
+      VALUES (1, ${JSON.stringify(status)}::jsonb, ${JSON.stringify(forecast)}::jsonb, ${cellen}::jsonb, NOW())
       ON CONFLICT (id) DO UPDATE SET
         status     = EXCLUDED.status,
         forecast   = EXCLUDED.forecast,
+        cellen     = COALESCE(EXCLUDED.cellen, ess_live.cellen),
         bijgewerkt = EXCLUDED.bijgewerkt
     `;
 
@@ -44,19 +50,22 @@ export async function POST(request) {
   }
 }
 
-// GET — laatste status + forecast (zonder secret; read-only, voor het dashboard).
+// GET — laatste status + forecast + celspanningen (zonder secret; read-only, voor het dashboard).
+// De kolom `cellen` lees ik via to_jsonb(ess_live)->'cellen': bestaat de kolom nog niet (tussen deploy en de eerste push met celdata)
+// dan geeft dat gewoon null i.p.v. een fout, en blijft de rest van het dashboard werken.
 export async function GET() {
   try {
     const sql = getDb();
-    const rows = await sql`SELECT status, forecast, bijgewerkt FROM ess_live WHERE id = 1`;
+    const rows = await sql`SELECT status, forecast, bijgewerkt, to_jsonb(ess_live)->'cellen' AS cellen FROM ess_live WHERE id = 1`;
     const r = rows[0];
     return Response.json({
       success: true,
       status: r?.status ?? {},
       forecast: r?.forecast ?? [],
+      cellen: r?.cellen ?? null,
       bijgewerkt: r?.bijgewerkt ?? null,
     });
   } catch (err) {
-    return Response.json({ success: true, status: {}, forecast: [], bijgewerkt: null });
+    return Response.json({ success: true, status: {}, forecast: [], cellen: null, bijgewerkt: null });
   }
 }
