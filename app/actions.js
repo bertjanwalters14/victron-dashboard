@@ -4,7 +4,7 @@ import { neon } from '@neondatabase/serverless';
 import { revalidatePath, updateTag } from 'next/cache';
 import { cookies } from 'next/headers';
 import { sessieTokenOk, SESSIE_COOKIE } from '@/lib/auth';
-import { vandaagNl } from '@/lib/knoppen';
+import { vandaagNl, morgenNl } from '@/lib/knoppen';
 
 // Elke actie is een openbaar POST-eindpunt, dus controleert zelf de sessie (de proxy doet dat ook, dit is de tweede slot).
 async function vereisInlog() {
@@ -42,6 +42,7 @@ export async function setLaadVanNet(aan) {
 
 // Server action: sla het balanceren van VANDAAG over (balansdag, balanskoop, hold, doorladen en forceer-balans). We bewaren de DATUM
 // waarvoor het geldt in plaats van een aan/uit-waarde: /api/laadvannet geeft alleen voor die dag true door, dus het vervalt vanzelf om middernacht.
+// Overslaan wint van plannen: staat er een plan voor vandaag, dan wordt dat hier gewist (anders zou de knop iets tonen wat de sturing negeert).
 export async function setBalansOverslaan(aan) {
   await vereisInlog();
   const sql = neon(process.env.DATABASE_URL);
@@ -51,10 +52,38 @@ export async function setBalansOverslaan(aan) {
     ON CONFLICT (sleutel) DO UPDATE SET
       waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
   `;
+  if (aan) {
+    await sql`UPDATE instellingen SET waarde = '', bijgewerkt = NOW() WHERE sleutel = 'balans_plan' AND waarde = ${vandaagNl()}`;
+  }
   await markeerPush(sql);
   revalidatePath('/ess');
   updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
   return aan;
+}
+
+// Server action: plan een balansdag voor vandaag of morgen ('vandaag' | 'morgen' | 'geen'). We bewaren de DATUM (zoals bij overslaan):
+// /api/laadvannet geeft alleen op die dag balansPlan: true door, dus het vervalt vanzelf om middernacht. De sturing maakt van die dag een
+// balansdag (goedkoopste zonuren, hold, doorladen) en slaat daarbij de spreadgrens over. Vandaag plannen kan niet zolang "Balanceren
+// overslaan" voor vandaag aan staat (dat wint in de sturing).
+export async function setBalansPlan(keuze) {
+  await vereisInlog();
+  if (!['vandaag', 'morgen', 'geen'].includes(keuze)) throw new Error('Onbekende keuze: ' + keuze);
+  const sql = neon(process.env.DATABASE_URL);
+  if (keuze === 'vandaag') {
+    const rij = await sql`SELECT waarde FROM instellingen WHERE sleutel = 'balans_overslaan'`;
+    if (rij[0]?.waarde === vandaagNl()) throw new Error('Zet "Balanceren overslaan" eerst uit');
+  }
+  const datum = keuze === 'vandaag' ? vandaagNl() : keuze === 'morgen' ? morgenNl() : '';
+  await sql`
+    INSERT INTO instellingen (sleutel, waarde, bijgewerkt)
+    VALUES ('balans_plan', ${datum}, NOW())
+    ON CONFLICT (sleutel) DO UPDATE SET
+      waarde = EXCLUDED.waarde, bijgewerkt = EXCLUDED.bijgewerkt
+  `;
+  await markeerPush(sql);
+  revalidatePath('/ess');
+  updateTag('knoppen');   // de gecachte knopstanden voor /api/laadvannet (Node-RED) direct verversen
+  return keuze;
 }
 
 // Server action: zet "accu altijd vol houden" aan/uit.

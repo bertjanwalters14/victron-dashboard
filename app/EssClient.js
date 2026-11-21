@@ -2,7 +2,7 @@
 import { useState, useEffect, useTransition, useCallback } from 'react';
 import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
 import { useRouter } from 'next/navigation';
-import { setBalansOverslaan, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
+import { setBalansOverslaan, setBalansPlan, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
 import TabBar from './TabBar';
 
 // Energiestromen-kleuren, losjes naar VRM's eigen palet (cyaan=accu->net, oranje=PV->net, groen=PV->accu,
@@ -375,6 +375,34 @@ function ScheduleEditor({ scheduleKey, initial }) {
   );
 }
 
+// "Balanceren plannen" (v2.15): kies vandaag of morgen als balansdag. De sturing maakt van die dag een balansdag (goedkoopste zonuren, hold op de
+// top, doorladen) en slaat daarbij de spreadgrens over. De trigger toont het plan, zodat je het ziet zonder te klikken. Vandaag plannen kan niet
+// zolang "Balanceren overslaan" aan staat (dat wint in de sturing).
+function BalansPlanEditor({ plan, onPlan, overslaan, bezig }) {
+  const [open, setOpen] = useState(false);
+  const kies = (k) => { onPlan(k); setOpen(false); };
+  const knop = (k, label, uit) => (
+    <button type="button" key={k} disabled={bezig || uit} onClick={() => kies(k)}
+      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40 ${plan === k ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'}`}>{label}</button>
+  );
+  return (
+    <Dropdown open={open} onToggle={() => setOpen(o => !o)}
+      trigger={<>📅 {plan === 'vandaag' ? 'Balansdag: vandaag' : plan === 'morgen' ? 'Balansdag: morgen' : 'Balanceren plannen'}</>}>
+      <div className="mb-2">Kies de dag waarop hij moet balanceren (volladen tot de echte top en daar vasthouden), in de goedkoopste zonuren.</div>
+      <div className="mb-2 flex flex-wrap gap-2">
+        {knop('vandaag', 'Vandaag', overslaan)}
+        {knop('morgen', 'Morgen')}
+        {plan ? knop('geen', 'Annuleren') : null}
+      </div>
+      {overslaan ? <div className="mb-2 text-amber-300">Vandaag kan niet: "Balanceren overslaan" staat aan.</div> : null}
+      <div className="text-gray-400">Kies je morgen, dan gaat het plan om middernacht in en vervalt het aan het eind van die dag of zodra de top is gehaald.</div>
+      <div className="mt-2 flex justify-end">
+        <button type="button" onClick={() => setOpen(false)} className="text-gray-500 hover:text-gray-300">Sluiten</button>
+      </div>
+    </Dropdown>
+  );
+}
+
 // Verkoop-bodem (RESERVE_SOC): normaal 25%, lager tijdens bv. vakantie (minder huisverbruik nodig als
 // nachtbuffer, dus mag de accu verder doorverkopen). Sleepbalk committeert pas bij loslaten (niet per
 // pixel tijdens het slepen) om de DB niet met een schrijf-per-frame te bestoken.
@@ -462,11 +490,12 @@ function SchakelKaart({ titel, sub, subKleur, aan, onToggle, bezig, aanKleur, ch
 
 const schemaTxt = (sch) => (sch && sch.enabled ? `Schema ${sch.start}–${sch.end} staat aan` : null);
 
-export default function EssClient({ status, forecast, bijgewerkt, balansOverslaan, keepCharged, verkoopPauze, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
+export default function EssClient({ status, forecast, bijgewerkt, balansOverslaan, balansPlan, keepCharged, verkoopPauze, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
   const alle = pvDirectAlsPvNet((forecast || []).map(d => ({ ...d })));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
   const [overslaan, setOverslaan] = useState(!!balansOverslaan);
+  const [plan, setPlan] = useState(balansPlan || '');   // 'vandaag' | 'morgen' | ''
   const [vol, setVol] = useState(!!keepCharged);
   const [pauze, setPauze] = useState(!!verkoopPauze);
   const [dag, setDag] = useState('vandaag');   // 'vandaag' | 'morgen' | 'alles'
@@ -490,7 +519,16 @@ export default function EssClient({ status, forecast, bijgewerkt, balansOverslaa
   function toggleBalans() {
     const next = !overslaan;
     setOverslaan(next);
+    if (next && plan === 'vandaag') setPlan('');   // de server wist het plan voor vandaag zodra overslaan aan gaat
     startTransition(async () => { await setBalansOverslaan(next); volg(); });
+  }
+
+  function kiesPlan(keuze) {
+    const vorig = plan;
+    setPlan(keuze === 'geen' ? '' : keuze);
+    startTransition(async () => {
+      try { await setBalansPlan(keuze); volg(); } catch { setPlan(vorig); }
+    });
   }
 
   function toggleVol() {
@@ -524,8 +562,10 @@ export default function EssClient({ status, forecast, bijgewerkt, balansOverslaa
 
         <section className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SchakelKaart titel="Balanceren overslaan" aan={overslaan} onToggle={toggleBalans} bezig={pending} aanKleur="bg-blue-600"
-            sub={overslaan ? 'Vandaag geen balansdag (tot middernacht)' : (s.balansDoel && !geenBalansdag ? 'Balansdag staat aan, zet aan om over te slaan' : 'Balanceert alleen als het nodig is')}
-            subKleur={overslaan ? 'text-blue-300' : s.balansDoel && !geenBalansdag ? 'text-amber-300' : 'text-gray-400'} />
+            sub={overslaan ? 'Vandaag geen balansdag (tot middernacht)' : plan === 'vandaag' ? 'Vandaag gepland als balansdag' : plan === 'morgen' ? 'Morgen gepland als balansdag' : (s.balansDoel && !geenBalansdag ? 'Balansdag staat aan, zet aan om over te slaan' : 'Balanceert alleen als het nodig is')}
+            subKleur={overslaan ? 'text-blue-300' : plan ? 'text-amber-300' : s.balansDoel && !geenBalansdag ? 'text-amber-300' : 'text-gray-400'}>
+            <BalansPlanEditor plan={plan} onPlan={kiesPlan} overslaan={overslaan} bezig={pending} />
+          </SchakelKaart>
           <SchakelKaart titel="Accu altijd vol" aan={vol} onToggle={toggleVol} bezig={pending} aanKleur="bg-amber-500"
             sub={schemaTxt(keepChargedSchedule) || (vol ? 'Vol gehouden, geen verkoop' : 'Normale handel')}
             subKleur={schemaTxt(keepChargedSchedule) || vol ? 'text-amber-300' : 'text-gray-400'}>

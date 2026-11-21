@@ -1,7 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { revalidateTag } from 'next/cache';
 import { parseSchedule, effectiveState } from '@/lib/schedule';
-import { leesKnoppenRuw, KNOPPEN_TAG, vandaagNl } from '@/lib/knoppen';
+import { leesKnoppenRuw, KNOPPEN_TAG, vandaagNl, planKeuze } from '@/lib/knoppen';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,13 +33,17 @@ export async function GET() {
       verkoopPauzeHandmatig: m['verkoop_pauze'] === 'true',
       laadVanNetSchedule: { enabled: false, start: '12:00', end: '18:00' }, keepChargedSchedule, verkoopPauzeSchedule,
       balansOverslaan: m['balans_overslaan'] === vandaagNl(),   // alleen true op de dag waarvoor is overgeslagen: vervalt om middernacht
+      // 'Balanceren plannen' (v2.15): balansPlan is alleen true op de geplande dag zelf (vervalt om middernacht); balansPlanDatum
+      // (vandaag of morgen, anders leeg) is er voor de statusregel in Node-RED.
+      balansPlan: planKeuze(m['balans_plan']) === 'vandaag' && m['balans_overslaan'] !== vandaagNl(),
+      balansPlanDatum: planKeuze(m['balans_plan']) ? m['balans_plan'] : '',
       reserveSoc,
       pushToken: Number(m['push_nu']) || 0,   // wijzigt zodra iemand in de app "Ververs nu" indrukt -> Node-RED pusht dan meteen de status
     });
   } catch {
     const off = { enabled: false, start: '12:00', end: '18:00' };
     return Response.json({
-      success: true, laadVanNet: true, keepCharged: false, verkoopPauze: false, balansOverslaan: false,   // laden uit net blijft aan, ook als Neon plat ligt
+      success: true, laadVanNet: true, keepCharged: false, verkoopPauze: false, balansOverslaan: false, balansPlan: false, balansPlanDatum: '',   // laden uit net blijft aan, ook als Neon plat ligt
       laadVanNetHandmatig: true, keepChargedHandmatig: false, verkoopPauzeHandmatig: false,
       laadVanNetSchedule: off, keepChargedSchedule: off, verkoopPauzeSchedule: off,
       reserveSoc: 25, pushToken: 0,

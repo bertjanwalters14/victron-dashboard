@@ -1,7 +1,7 @@
 import EssClient from './EssClient';
 import { neon } from '@neondatabase/serverless';
 import { parseSchedule } from '@/lib/schedule';
-import { vandaagNl } from '@/lib/knoppen';
+import { vandaagNl, planKeuze } from '@/lib/knoppen';
 
 // Altijd vers renderen: elke refresh leest direct de laatste stand uit de DB
 // (voorkomt het "stale-while-revalidate"-effect waarbij je 2x moet verversen).
@@ -12,6 +12,7 @@ export default async function EssPage() {
   let forecast: any[] = [];
   let bijgewerkt: string | null = null;
   let balansOverslaan = false;
+  let balansPlan = '';   // 'vandaag' | 'morgen' | ''
   let keepCharged = false;
   let verkoopPauze = false;
   let keepChargedSchedule = parseSchedule(null);
@@ -27,12 +28,13 @@ export default async function EssPage() {
       bijgewerkt = rows[0].bijgewerkt as any;
     }
     const inst = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN (
-      'balans_overslaan', 'keep_charged', 'verkoop_pauze', 'reserve_soc',
+      'balans_overslaan', 'balans_plan', 'keep_charged', 'verkoop_pauze', 'reserve_soc',
       'keep_charged_schedule', 'verkoop_pauze_schedule'
     )`;
     const m: any = {};
     inst.forEach((r: any) => { m[r.sleutel] = r.waarde; });
     balansOverslaan = m['balans_overslaan'] === vandaagNl();
+    balansPlan = planKeuze(m['balans_plan']);
     keepCharged = m['keep_charged'] === 'true';
     verkoopPauze = m['verkoop_pauze'] === 'true';
     keepChargedSchedule = parseSchedule(m['keep_charged_schedule']);
@@ -45,7 +47,7 @@ export default async function EssPage() {
 
   return <EssClient
     status={status} forecast={forecast} bijgewerkt={bijgewerkt}
-    balansOverslaan={balansOverslaan} keepCharged={keepCharged} verkoopPauze={verkoopPauze}
+    balansOverslaan={balansOverslaan} balansPlan={balansPlan} keepCharged={keepCharged} verkoopPauze={verkoopPauze}
     keepChargedSchedule={keepChargedSchedule} verkoopPauzeSchedule={verkoopPauzeSchedule}
     reserveSoc={reserveSoc}
   />;
