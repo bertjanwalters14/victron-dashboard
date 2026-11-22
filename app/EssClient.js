@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useTransition, useCallback } from 'react';
-import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine } from 'recharts';
+import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine, ReferenceArea } from 'recharts';
 import { useRouter } from 'next/navigation';
 import { setBalansOverslaan, setBalansPlan, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
 import TabBar from './TabBar';
@@ -627,8 +627,9 @@ export default function EssClient({ status, forecast, bijgewerkt, cellen, balans
               <ReferenceLine yAxisId="prijs" x={nuUur} stroke="var(--chart-ref)" strokeDasharray="4 3" strokeOpacity={0.7}
                 label={{ value: '▼ nu', position: 'top', fill: 'var(--chart-ref)', fontSize: 11 }} />
               {dag === 'morgen' && data.some(d => d.uur === '+1 00:00') ? (
-                <ReferenceLine yAxisId="prijs" x="+1 00:00" stroke="var(--chart-ref)" strokeOpacity={0.5}
-                  label={{ value: 'morgen ▶', position: 'insideTopRight', fill: 'var(--chart-ref)', fontSize: 11 }} />
+                // Morgen is een licht gekleurd vlak dat precies op de rand van het eerste uur van morgen begint (een lijn zou midden door de balk van 00:00 lopen)
+                <ReferenceArea yAxisId="prijs" x1="+1 00:00" x2={data[data.length - 1].uur} fill="var(--chart-ref)" fillOpacity={0.07} stroke="none" ifOverflow="visible"
+                  label={{ value: 'morgen', position: 'insideTopLeft', fill: 'var(--chart-ref)', fontSize: 11 }} />
               ) : null}
               <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)" maxBarSize={16} radius={[3, 3, 0, 0]} fillOpacity={0.9}>
                 {data.map((d, i) => (
