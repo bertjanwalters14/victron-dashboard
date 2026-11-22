@@ -626,6 +626,11 @@ export default function EssClient({ status, forecast, bijgewerkt, cellen, balans
               <Legend wrapperStyle={{ fontSize: 12 }} formatter={legendTekst} />
               <ReferenceLine yAxisId="prijs" x={nuUur} stroke="var(--chart-ref)" strokeDasharray="4 3" strokeOpacity={0.7}
                 label={{ value: '▼ nu', position: 'top', fill: 'var(--chart-ref)', fontSize: 11 }} />
+              {s.dbg?.vrmMinSoc ? (
+                // De accu ontlaadt in VRM nooit onder dit niveau: daar stopt de lijn, het huis draait dan op het net
+                <ReferenceLine yAxisId="soc" y={s.dbg.vrmMinSoc} stroke="#ef4444" strokeDasharray="4 3" strokeOpacity={0.6}
+                  label={{ value: `VRM-minimum ${s.dbg.vrmMinSoc}%`, position: 'insideBottomRight', fill: '#ef4444', fontSize: 10 }} />
+              ) : null}
               {dag === 'morgen' && data.some(d => d.uur === '+1 00:00') ? (
                 // Morgen is een licht gekleurd vlak dat precies op de rand van het eerste uur van morgen begint (een lijn zou midden door de balk van 00:00 lopen)
                 <ReferenceArea yAxisId="prijs" x1="+1 00:00" x2={data[data.length - 1].uur} fill="var(--chart-ref)" fillOpacity={0.07} stroke="none" ifOverflow="visible"

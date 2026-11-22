@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 import { revalidateTag } from 'next/cache';
 import { parseSchedule, effectiveState } from '@/lib/schedule';
 import { leesKnoppenRuw, KNOPPEN_TAG, vandaagNl, planKeuze } from '@/lib/knoppen';
+import { haalVrmMinSoc } from '@/lib/vrm';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,8 @@ export async function GET() {
     const verkoopPauzeSchedule = parseSchedule(m['verkoop_pauze_schedule']);
     const reserveSocRaw = Number(m['reserve_soc']);
     const reserveSoc = (reserveSocRaw >= 10 && reserveSocRaw <= 40) ? reserveSocRaw : 25;
+    let vrmMinSoc = null;   // Minimum SOC uit VRM (een uur gecachet); bij een fout null: de sturing rekent dan zonder VRM-vloer
+    try { vrmMinSoc = await haalVrmMinSoc(); } catch { /* null */ }
     return Response.json({
       success: true,
       // 'Laden uit net' is uit de app gehaald: het algoritme beslist zelf (arbitrage-regels, dekking, balans). Altijd aan.
@@ -39,6 +42,7 @@ export async function GET() {
       balansPlanDatum: planKeuze(m['balans_plan']) ? m['balans_plan'] : '',
       balansPlanMorgen: planKeuze(m['balans_plan']) === 'morgen',   // v2.16: vanaf ca. 15:00 (prijzen van morgen binnen) plant de prognose de balansdag van morgen al
       reserveSoc,
+      vrmMinSoc,   // v2.21: de vloer van de prognose (ess_vrm_min_soc in Node-RED)
       pushToken: Number(m['push_nu']) || 0,   // wijzigt zodra iemand in de app "Ververs nu" indrukt -> Node-RED pusht dan meteen de status
     });
   } catch {
@@ -47,7 +51,7 @@ export async function GET() {
       success: true, laadVanNet: true, keepCharged: false, verkoopPauze: false, balansOverslaan: false, balansPlan: false, balansPlanDatum: '', balansPlanMorgen: false,   // laden uit net blijft aan, ook als Neon plat ligt
       laadVanNetHandmatig: true, keepChargedHandmatig: false, verkoopPauzeHandmatig: false,
       laadVanNetSchedule: off, keepChargedSchedule: off, verkoopPauzeSchedule: off,
-      reserveSoc: 25, pushToken: 0,
+      reserveSoc: 25, vrmMinSoc: null, pushToken: 0,
     });
   }
 }
