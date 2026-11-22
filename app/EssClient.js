@@ -507,7 +507,7 @@ export default function EssClient({ status, forecast, bijgewerkt, cellen, balans
   const data = alle.filter(d => {
     const morgen = String(d.uur).startsWith('+1');
     if (dag === 'vandaag') return !morgen;
-    if (dag === 'morgen') return morgen || d.uur >= nuUur;   // rest van vandaag (vanaf het lopende uur) + morgen: zo zie je hoe vanavond in het plan van morgen overgaat
+    if (dag === 'morgen') return true;   // alles wat er is: de uren van vandaag vanaf het begin van de bewaarde gegevens (na een herstart van de Cerbo is dat later dan 00:00), de rest van vandaag en morgen; morgen staat in een grijs vlak
     return true;
   });
   // Een effectief-AAN "Accu altijd vol" terwijl het schema NU niet actief is = handmatig aangezet.
