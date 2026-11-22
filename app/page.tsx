@@ -18,14 +18,16 @@ export default async function EssPage() {
   let keepChargedSchedule = parseSchedule(null);
   let verkoopPauzeSchedule = parseSchedule(null);
   let reserveSoc = 25;
+  let cellen: any = null;
 
   try {
     const sql = neon(process.env.DATABASE_URL!);
-    const rows = await sql`SELECT status, forecast, bijgewerkt FROM ess_live WHERE id = 1`;
+    const rows = await sql`SELECT status, forecast, bijgewerkt, to_jsonb(ess_live)->'cellen' AS cellen FROM ess_live WHERE id = 1`;
     if (rows[0]) {
       status = rows[0].status || {};
       forecast = rows[0].forecast || [];
       bijgewerkt = rows[0].bijgewerkt as any;
+      cellen = rows[0].cellen ?? null;
     }
     const inst = await sql`SELECT sleutel, waarde FROM instellingen WHERE sleutel IN (
       'balans_overslaan', 'balans_plan', 'keep_charged', 'verkoop_pauze', 'reserve_soc',
@@ -46,7 +48,7 @@ export default async function EssPage() {
   }
 
   return <EssClient
-    status={status} forecast={forecast} bijgewerkt={bijgewerkt}
+    status={status} forecast={forecast} bijgewerkt={bijgewerkt} cellen={cellen}
     balansOverslaan={balansOverslaan} balansPlan={balansPlan} keepCharged={keepCharged} verkoopPauze={verkoopPauze}
     keepChargedSchedule={keepChargedSchedule} verkoopPauzeSchedule={verkoopPauzeSchedule}
     reserveSoc={reserveSoc}

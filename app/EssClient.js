@@ -4,6 +4,7 @@ import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, ResponsiveContai
 import { useRouter } from 'next/navigation';
 import { setBalansOverslaan, setBalansPlan, setKeepCharged, setVerkoopPauze, setSchedule, setReserveSoc } from './actions';
 import TabBar from './TabBar';
+import HoldKaart from './HoldKaart';
 
 // Energiestromen-kleuren, losjes naar VRM's eigen palet (cyaan=accu->net, oranje=PV->net, groen=PV->accu,
 // limoen=PV->verbruik, blauw=accu->verbruik, rood/paars=van het net -- die twee als NEGATIEF getoond,
@@ -490,7 +491,7 @@ function SchakelKaart({ titel, sub, subKleur, aan, onToggle, bezig, aanKleur, ch
 
 const schemaTxt = (sch) => (sch && sch.enabled ? `Schema ${sch.start}–${sch.end} staat aan` : null);
 
-export default function EssClient({ status, forecast, bijgewerkt, balansOverslaan, balansPlan, keepCharged, verkoopPauze, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
+export default function EssClient({ status, forecast, bijgewerkt, cellen, balansOverslaan, balansPlan, keepCharged, verkoopPauze, keepChargedSchedule, verkoopPauzeSchedule, reserveSoc }) {
   const alle = pvDirectAlsPvNet((forecast || []).map(d => ({ ...d })));
   const nuUur = ('0' + new Date().getHours()).slice(-2) + ':00';   // huidig uur, bijv. "14:00"
   const s = status || {};
@@ -582,6 +583,8 @@ export default function EssClient({ status, forecast, bijgewerkt, balansOverslaa
             <ReserveEditor initial={reserveSoc} />
           </div>
         </section>
+
+        <HoldKaart status={s} cellen={cellen} bijgewerkt={bijgewerkt} />
 
         {s.balansDoel ? (geenBalansdag ? (
           <div className="mb-3 flex items-center gap-2 rounded-2xl border border-gray-700 bg-gray-800/40 p-3 text-sm text-gray-300">
