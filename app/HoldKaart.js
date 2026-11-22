@@ -1,5 +1,7 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { holdSamenvatting, HOLD } from '@/lib/hold';
+import { useVerversNu, VERVERS_TEKST } from './useVerversNu';
 
 const KAART = 'rounded-2xl border border-blue-800/60 bg-blue-900/20';
 const tijdKort = (ms) => new Date(ms).toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit', minute: '2-digit' });
@@ -8,6 +10,8 @@ const duur = (min) => (min >= 60 ? `${Math.floor(min / 60)} u${min % 60 ? ` ${mi
 // Kaart "Hold op de top" op de Live-pagina: laat zien dat de sturing de accu bewust op de top vasthoudt om te balanceren, hoe ver hij is en wanneer hij stopt.
 // Alleen zichtbaar als de hold loopt (of net is afgerond); de gegevens komen uit status.dbg en de celdata per pack van dezelfde push.
 export default function HoldKaart({ status, cellen, bijgewerkt }) {
+  const router = useRouter();
+  const { fase, vraag } = useVerversNu(async () => router.refresh());
   const h = holdSamenvatting(status, cellen, bijgewerkt);
   if (!h) return null;
 
@@ -25,6 +29,8 @@ export default function HoldKaart({ status, cellen, bijgewerkt }) {
       <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-blue-300">Hold op de top</h2>
         <span className="text-xs text-gray-400">de accu wordt vastgehouden zodat de BMS kan balanceren</span>
+        <button type="button" onClick={vraag} disabled={fase === 'wacht'} aria-live="polite"
+          className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-70 ${fase === 'mislukt' ? 'border-red-700/60 bg-red-900/30 text-red-300' : fase === 'klaar' ? 'border-green-700/60 bg-green-900/30 text-green-300' : 'border-blue-700/60 bg-blue-900/30 text-blue-300 hover:text-blue-200'}`}>{VERVERS_TEKST[fase]}</button>
       </div>
 
       <div className="mt-2">

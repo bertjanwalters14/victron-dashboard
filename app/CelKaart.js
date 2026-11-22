@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import { useVerversNu, VERVERS_TEKST } from './useVerversNu';
 import { verschilKleur, celStand, isZwakkeCel, leeftijdTekst, normaliseerCellen, PACK_ROL, OUD_NA_MS } from '@/lib/cellen';
 
 const KAART = 'rounded-2xl border border-gray-800 bg-gray-900/60';
@@ -112,6 +113,7 @@ export default function CelKaart() {
     return () => { clearInterval(t); clearInterval(k); };
   }, [haal]);
 
+  const { fase, vraag } = useVerversNu(haal);
   const meting = cellen?.t ?? null;
   const oud = meting != null && nu - meting > OUD_NA_MS;
 
@@ -122,10 +124,14 @@ export default function CelKaart() {
           <h2 className="text-lg font-semibold">Cellen per pack</h2>
           <p className="text-xs text-gray-400">
             {meting != null ? `Gemeten om ${tijdKort(meting)} (${leeftijdTekst(nu - meting)}).` : 'Alle 16 celspanningen per pack, uit de meetflow op de Cerbo.'}
-            {' '}Komt mee met de status-push (elke 20 minuten of via "Ververs nu" op de Live-pagina).
+            {' '}Komt mee met de status-push (elke 20 minuten, of direct met "Ververs nu": dat duurt ongeveer een minuut).
           </p>
         </div>
-        <button type="button" onClick={haal} className="rounded-lg border border-gray-800 bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:text-gray-200">Opnieuw laden</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={vraag} disabled={fase === 'wacht'} aria-live="polite"
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-70 ${fase === 'mislukt' ? 'border-red-700/60 bg-red-900/30 text-red-300' : fase === 'klaar' ? 'border-green-700/60 bg-green-900/30 text-green-300' : 'border-blue-700/60 bg-blue-900/30 text-blue-300 hover:text-blue-200'}`}>{VERVERS_TEKST[fase]}</button>
+          <button type="button" onClick={haal} className="rounded-lg border border-gray-800 bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:text-gray-200">Opnieuw laden</button>
+        </div>
       </div>
 
       {fout ? <div className={`${KAART} mb-3 p-3 text-sm text-red-300`}>Het laden is mislukt: {fout}</div> : null}
