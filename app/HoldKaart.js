@@ -64,7 +64,7 @@ export default function HoldKaart({ status, cellen, bijgewerkt }) {
 
       <p className="mt-3 text-xs text-gray-400">
         Eindigt zodra {h.packs ? 'beide packs' : 'de cellen'} {h.packs ? `binnen ${HOLD.PACK_GRENS_MV} mV` : `binnen ${HOLD.SYSTEEM_GRENS_MV} mV`} zijn en de top minstens {HOLD.TOP_MIN_MINUTEN / 60} uur heeft geduurd{h.uiterlijkMs != null ? `, uiterlijk rond ${tijdKort(h.uiterlijkMs)}` : ''}.
-        {h.piekVrij ? ' Een piekuur onderbreekt de hold: nu mag er verkocht worden.' : ' Verkopen is zolang geblokkeerd, behalve in een piekuur (vanaf €0,40).'}
+        {' '}Verkopen is zolang geblokkeerd, ook in een piekuur: de balans gaat eerst af.
         {' '}De cijfers komen uit de laatste status-push en lopen tot ongeveer 20 minuten achter.
       </p>
     </section>
