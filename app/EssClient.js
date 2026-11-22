@@ -515,7 +515,7 @@ export default function EssClient({ status, forecast, bijgewerkt, cellen, balans
   // v2.2: bij een te kleine dagspread is er geen balansdag, ook al is er een onbalans gemeten (dan is een koopuur geen "om te balanceren")
   const geenBalansdag = !!s.balansDoel && s.balansDoel.includes('geen balansdag');
   const spreadTxt = s.dbg?.dagSpreadKoop != null ? `€${Number(s.dbg.dagSpreadKoop).toFixed(2).replace('.', ',')}` : null;
-  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: !!s.dbg?.balansOnbalans && !geenBalansdag, dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
+  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: dag === 'morgen' ? !!s.dbg?.balansPlanMorgen : (!!s.dbg?.balansOnbalans && !geenBalansdag), dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
 
   function toggleBalans() {
     const next = !overslaan;
