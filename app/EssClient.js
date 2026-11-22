@@ -507,7 +507,7 @@ export default function EssClient({ status, forecast, bijgewerkt, cellen, balans
   const data = alle.filter(d => {
     const morgen = String(d.uur).startsWith('+1');
     if (dag === 'vandaag') return !morgen;
-    if (dag === 'morgen') return morgen;
+    if (dag === 'morgen') return morgen || d.uur >= nuUur;   // rest van vandaag (vanaf het lopende uur) + morgen: zo zie je hoe vanavond in het plan van morgen overgaat
     return true;
   });
   // Een effectief-AAN "Accu altijd vol" terwijl het schema NU niet actief is = handmatig aangezet.
@@ -515,7 +515,7 @@ export default function EssClient({ status, forecast, bijgewerkt, cellen, balans
   // v2.2: bij een te kleine dagspread is er geen balansdag, ook al is er een onbalans gemeten (dan is een koopuur geen "om te balanceren")
   const geenBalansdag = !!s.balansDoel && s.balansDoel.includes('geen balansdag');
   const spreadTxt = s.dbg?.dagSpreadKoop != null ? `€${Number(s.dbg.dagSpreadKoop).toFixed(2).replace('.', ',')}` : null;
-  const contextZin = dagContext(data, { keepSchedule: keepChargedSchedule, keepManual, balans: dag === 'morgen' ? !!s.dbg?.balansPlanMorgen : (!!s.dbg?.balansOnbalans && !geenBalansdag), dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
+  const contextZin = dagContext(dag === 'morgen' ? alle.filter(d => String(d.uur).startsWith('+1')) : data, { keepSchedule: keepChargedSchedule, keepManual, balans: dag === 'morgen' ? !!s.dbg?.balansPlanMorgen : (!!s.dbg?.balansOnbalans && !geenBalansdag), dekking: (s.dbg?.dekkingKoopUren?.length || 0) > 0 });
 
   function toggleBalans() {
     const next = !overslaan;
@@ -626,6 +626,10 @@ export default function EssClient({ status, forecast, bijgewerkt, cellen, balans
               <Legend wrapperStyle={{ fontSize: 12 }} formatter={legendTekst} />
               <ReferenceLine yAxisId="prijs" x={nuUur} stroke="var(--chart-ref)" strokeDasharray="4 3" strokeOpacity={0.7}
                 label={{ value: '▼ nu', position: 'top', fill: 'var(--chart-ref)', fontSize: 11 }} />
+              {dag === 'morgen' && data.some(d => d.uur === '+1 00:00') ? (
+                <ReferenceLine yAxisId="prijs" x="+1 00:00" stroke="var(--chart-ref)" strokeOpacity={0.5}
+                  label={{ value: 'morgen ▶', position: 'insideTopRight', fill: 'var(--chart-ref)', fontSize: 11 }} />
+              ) : null}
               <Bar yAxisId="prijs" dataKey="prijs" name="Prijs all-in (€)" maxBarSize={16} radius={[3, 3, 0, 0]} fillOpacity={0.9}>
                 {data.map((d, i) => (
                   <Cell key={i} fill={KLEUR[d.cat] || '#f59e0b'}
